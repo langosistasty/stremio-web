@@ -2,5 +2,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 export { default as BigPicture } from './BigPicture';
+export { default as BigPictureSettings } from './BigPictureSettings';
 export { default as BigPictureToggle } from './BigPictureToggle';
-export { isBigPictureEnabled, useBigPicture } from './store';
+export { isBigPictureEnabled, useBigPicture, useBigPictureLayout } from './store';

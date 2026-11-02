@@ -245,7 +245,7 @@ test.describe('with Big Picture off', () => {
         await expect(view.getByTitle('movie top 1', { exact: true })).toBeVisible();
         await expect(view.locator('nav a.selected')).toHaveAttribute('tabindex', '-1');
         await expect(remote.focused()).toHaveCount(0);
-        await expect(remote.page.locator('#bigpicture-focus-styles')).toHaveCount(0);
+        await expect(remote.page.locator('#bigpicture-styles')).toHaveCount(0);
     });
 
     test('switching it off mid-session undoes the promoted controls', async ({ remote }) => {

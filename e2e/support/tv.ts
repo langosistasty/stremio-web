@@ -134,4 +134,5 @@ const test = base.extend<Options & { remote: Remote }>({
     },
 });
 
+export type { Remote };
 export { test, expect };

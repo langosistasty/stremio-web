@@ -112,9 +112,27 @@ const keepsArrow = (element: Element | null, direction: Direction) => {
     return false;
 };
 
+// Whether the element shows whole, inside every ancestor that clips it.
+const fullyVisible = (element: HTMLElement) => {
+    // The route container that clips at the screen's edge is one of the ancestors, so
+    // no viewport check is needed (and under CSS zoom its units differ between engines).
+    const rect = element.getBoundingClientRect();
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+        const style = window.getComputedStyle(node);
+        if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+        const clip = node.getBoundingClientRect();
+        if (rect.top < clip.top || rect.left < clip.left || rect.bottom > clip.bottom || rect.right > clip.right) return false;
+    }
+    return true;
+};
+
+// Scroll only when needed, and then put the control mid-screen vertically, as TV apps
+// do: rows stay in a steady place, and the top of a page is never scrolled away.
 const focusElement = (element: HTMLElement) => {
     element.focus({ preventScroll: true });
-    element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    if (!fullyVisible(element)) {
+        element.scrollIntoView({ block: 'center', inline: 'nearest' });
+    }
 };
 
 export type { Direction };

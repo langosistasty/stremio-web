@@ -2,8 +2,8 @@ import React, { forwardRef } from 'react';
 import { usePlatform } from 'stremio/common';
 import { Scale, MultiselectMenu, Toggle } from 'stremio/components';
 import { Section, Option } from '../components';
-// Big Picture (fork change, 2026-11-02): 10-foot TV mode switch, see BIGPICTURE.md.
-import { BigPictureToggle } from 'stremio/bigpicture';
+// Big Picture (fork change, 2026-11-02): 10-foot TV mode settings, see BIGPICTURE.md.
+import { BigPictureSettings, useBigPicture } from 'stremio/bigpicture';
 import useInterfaceOptions from './useInterfaceOptions';
 
 type Props = {
@@ -12,6 +12,7 @@ type Props = {
 
 const Interface = forwardRef<HTMLDivElement, Props>(({ profile }: Props, ref) => {
     const { shell } = usePlatform();
+    const bigPicture = useBigPicture();
 
     const {
         interfaceLanguageSelect,
@@ -33,9 +34,7 @@ const Interface = forwardRef<HTMLDivElement, Props>(({ profile }: Props, ref) =>
             <Option label={'SETTINGS_UI_ZOOM'}>
                 <Scale {...interfaceSize} />
             </Option>
-            <Option label={'Big Picture mode'}>
-                <BigPictureToggle />
-            </Option>
+            <BigPictureSettings />
             {
                 shell.active &&
                     <Option label={'SETTINGS_QUIT_ON_CLOSE'}>
@@ -46,7 +45,7 @@ const Interface = forwardRef<HTMLDivElement, Props>(({ profile }: Props, ref) =>
                     </Option>
             }
             {
-                shell.active &&
+                shell.active && !bigPicture.enabled &&
                     <Option label={'SETTINGS_FULLSCREEN_EXIT'}>
                         <Toggle
                             tabIndex={-1}

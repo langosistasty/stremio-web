@@ -5,6 +5,8 @@ import { useCore } from 'stremio/core';
 import { usePlatform } from 'stremio/common/Platform';
 import { INTERFACE_SCALES } from 'stremio/common/CONSTANTS';
 import { normalizeInterfaceScale, setInterfaceScale } from 'stremio/common/interfaceScale';
+// Big Picture (fork change, 2026-11-02): the TV size multiplies the scale, see BIGPICTURE.md.
+import { useBigPictureLayout } from 'stremio/bigpicture/store';
 
 type ScaleAction = 'decrease' | 'increase' | 'reset';
 
@@ -12,7 +14,8 @@ const useInterfaceScale = (profile: Profile) => {
     const core = useCore();
     const { shell } = usePlatform();
     const settingsRef = useRef(profile.settings);
-    const scale = normalizeInterfaceScale(profile.settings?.interfaceScale);
+    const bigPicture = useBigPictureLayout();
+    const scale = Math.round(normalizeInterfaceScale(profile.settings?.interfaceScale) * (bigPicture.enabled ? bigPicture.tvScale / 100 : 1));
 
     useEffect(() => {
         settingsRef.current = profile.settings;

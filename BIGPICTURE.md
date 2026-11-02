@@ -46,6 +46,17 @@ The local UI is its own origin, so it has its own login and settings, separate f
 - **Focus ring:** a white outline with a violet glow on the focused control, injected as a global stylesheet scoped to `html[data-bigpicture]`. Phase 3 makes it part of the TV layout.
 - **The polyfill's search isn't used:** when its hit test fails (on Settings switches, for example), it measures from the scroll container instead of the control, which skips controls or moves the wrong way. `spatial.ts` replaces it with about 40 lines.
 
+## TV layout
+
+| Setting (Settings > Interface, shown while Big Picture is on) | Default | Effect |
+|---|---|---|
+| TV size: 100–200% | 150% | Multiplies upstream's interface zoom. Your own zoom setting is kept and applies on top. At 150%, a 1080p TV gets the layout of a 1280×720 screen: 6 larger posters per row instead of 9, and text about 1.5 times larger |
+| TV safe margin: none, 2.5%, 5% | None | Pads the whole interface for TVs that crop the picture's edges (overscan). A TV on a PC input normally shows everything, so none is the default |
+
+- **Zoom path:** the scale goes through upstream's own mechanism (`useInterfaceScale`). That's the shell's page zoom where available (shells after 1.2.2), otherwise CSS zoom with rewritten breakpoints, so layouts respond as on a smaller screen.
+- **Scrolling:** a control is only scrolled to when it isn't fully visible, and then to mid-screen, so rows stay put and the top of a page, including the first row's heading, isn't scrolled away.
+- **Simplified menus:** the fullscreen button in the top bar, and the "Escape key exit full screen" setting, are hidden in Big Picture. The TV stays fullscreen, and Escape means Back.
+
 ## Tests
 
 Keyboard-only Playwright tests live in `e2e/`, with their own `package.json` so the upstream lockfile stays untouched. They run against the production build at 1920x1080, in WebKit (the shell's engine) and Chromium.
@@ -127,6 +138,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 0 | 2026-11-02 | Added `tv/` and this file. No upstream files changed |
 | 1 | 2026-11-02 | Added `src/bigpicture/`, `e2e/` and `tv/launch.sh`. Changed `src/App/App.js` (renders `<BigPicture />`, 3 lines) and `src/routes/Settings/Interface/Interface.tsx` (the switch, 5 lines) |
 | 2 | 2026-11-02 | Added `src/bigpicture/focus/`. Changed `src/common/Fullscreen/FullscreenProvider.tsx` (Escape doesn't leave fullscreen in Big Picture, 2 lines) and `src/routes/Library/Library.js` (the redirect replaces its history entry, 1 line plus a comment) |
+| 3 | 2026-11-02 | TV size and safe margin (`store.ts`, `BigPictureSettings.tsx`, `focus/styles.ts`). Changed `src/App/useInterfaceScale.ts` (TV size multiplies the scale, 4 lines), `src/routes/Settings/Interface/Interface.tsx` (the Big Picture rows; the Escape-fullscreen row hidden in Big Picture) and `src/components/NavBar/HorizontalNavBar/HorizontalNavBar.js` (fullscreen button hidden in Big Picture, 4 lines) |
 
 ## License
 

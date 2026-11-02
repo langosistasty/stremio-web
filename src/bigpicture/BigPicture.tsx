@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigationType } from 'react-router';
 import { useFullscreen, usePlatform } from 'stremio/common';
 import { useGoBack } from 'stremio/router';
-import { useBigPicture } from './store';
+import { useBigPictureLayout } from './store';
 import { FocusEngine, installStyles, startPromoting } from './focus';
 import startDiagnostics from './diagnostics';
 
@@ -13,7 +13,7 @@ startDiagnostics();
 
 // Rendered once inside FullscreenProvider and the router; draws nothing.
 const BigPicture = () => {
-    const { enabled } = useBigPicture();
+    const { enabled, overscan } = useBigPictureLayout();
     const { shell } = usePlatform();
     const [, requestFullscreen] = useFullscreen();
     const location = useLocation();
@@ -24,6 +24,10 @@ const BigPicture = () => {
     useEffect(() => {
         document.documentElement.toggleAttribute('data-bigpicture', enabled);
     }, [enabled]);
+
+    useEffect(() => {
+        document.documentElement.style.setProperty('--bigpicture-overscan', String(overscan));
+    }, [overscan]);
 
     // Go fullscreen once per switch-on. requestFullscreen changes identity whenever the
     // shell state does, and the shell answers with a state change, so keep it in a ref.
