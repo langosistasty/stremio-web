@@ -7,7 +7,7 @@ import FocusMemory from './memory';
 import nextInDirection from './spatial';
 import {
     currentLayer, focusElement, focusables, inLayer, inRail, isEditable, isFocusable,
-    keepsArrow, navigationScope, openLayer, railEntry, topRoute, type Direction,
+    focusGroup, keepsArrow, navigationScope, openLayer, openedMenu, railEntry, railOf, scrollFurther, topRoute, type Direction,
 } from './dom';
 
 type Navigation = {
@@ -15,7 +15,10 @@ type Navigation = {
     entry: string,
     type: 'POP' | 'PUSH' | 'REPLACE',
     path: string,
+    search: string,
 };
+
+type Navigate = (to: string, options: { replace: boolean }) => void;
 
 type Pending = {
     // 'restore' prefers where focus was before; 'initial' starts on the view's main content.
@@ -29,17 +32,26 @@ const BACK_KEYS = new Set(['Escape', 'BrowserBack', 'GoBack']);
 const SETTLE_MS = 1500;
 const ALL_CONTROLS = 'a[href], button, input, select, textarea, [tabindex]';
 const POSTER = '[href^="#/metadetails/"], [href^="#/detail/"]';
+// A details page with an episode chosen: /detail/<type>/<id>/<episode>.
+const EPISODE_PATH = /^\/((?:meta)?details?\/[^/]+\/[^/]+)\/[^/]+$/;
+const STREAM = '[class*="stream-container"], [class*="stream-action"]';
+const EPISODE = '[class*="video-container"]';
 // A catalog row still loading (upstream's MetaRow placeholder).
 const LOADING = '[class*="placeholder-container"]';
 // What a view starts on. Catalog views wait for their posters, because loading
 // placeholders come first. Phase 4 refines this per screen.
-const START_RULES: { path: RegExp, selector: string, wait: boolean }[] = [
-    { path: /^\/search/, selector: 'input', wait: false },
-    { path: /^\/(discover|library|continuewatching)?(\/|$)/, selector: POSTER, wait: true },
+// Selectors are tried in order, so a details page prefers a stream over an episode.
+const START_RULES: { path: RegExp, selectors: string[], wait: boolean }[] = [
+    { path: /^\/search/, selectors: ['input'], wait: false },
+    { path: /^\/(discover|library|continuewatching)?(\/|$)/, selectors: [POSTER], wait: true },
+    // Streams and episodes arrive from addons after the page itself.
+    { path: /^\/(meta)?details?\//, selectors: [STREAM, EPISODE], wait: true },
 ];
 // Last resort for a layer that ignores Escape and outside clicks.
 const CLOSE_BUTTON = '[class*="close-button"], [class*="cancel-button"]';
 const CLOSE_STEP_MS = 150;
+const SCROLL_RETRY_MS = 250;
+const MENU_OPEN_MS = 120;
 
 const syntheticEvents = new WeakSet<Event>();
 
@@ -54,7 +66,7 @@ const consume = (event: Event) => {
 
 class FocusEngine {
     private memory = new FocusMemory();
-    private navigation: Navigation = { entry: '', type: 'POP', path: '/' };
+    private navigation: Navigation = { entry: '', type: 'POP', path: '/', search: '' };
     private view: Element | null = null;
     private pending: Pending | null = { mode: 'initial', since: Date.now() };
     private observer: MutationObserver | null = null;
@@ -64,7 +76,12 @@ class FocusEngine {
     // A control focused only because the wait for content ran out; see check().
     private provisional: HTMLElement | null = null;
 
-    constructor(private readonly goBack: () => void) {}
+    constructor(private readonly goBack: () => void, private readonly navigate: Navigate) {}
+
+    // The key for remembering focus by place rather than by history entry.
+    private get place() {
+        return this.navigation.path + this.navigation.search;
+    }
 
     start() {
         window.addEventListener('keydown', this.onKeyDown, true);
@@ -130,6 +147,12 @@ class FocusEngine {
             return;
         }
 
+        if (event.key === 'Enter' && active instanceof HTMLElement && !isEditable(active)) {
+            // Let the control act first, then move into a menu it opened.
+            window.setTimeout(() => this.enterOpenedMenu(active), MENU_OPEN_MS);
+            return;
+        }
+
         if (BACK_KEYS.has(event.key) || (event.key === 'Backspace' && !isEditable(active))) {
             consume(event);
             if (!event.repeat) this.back();
@@ -141,10 +164,10 @@ class FocusEngine {
         const target = event.target;
         if (!view || !(target instanceof HTMLElement) || !view.contains(target) || inLayer(target)) return;
         this.pending = null;
-        this.memory.remember(view, this.navigation.entry, target, Array.from(view.querySelectorAll(ALL_CONTROLS)));
+        this.memory.remember(view, this.navigation.entry, this.place, target, Array.from(view.querySelectorAll(ALL_CONTROLS)));
     };
 
-    private move(direction: Direction) {
+    private move(direction: Direction, retry = true) {
         const scope = navigationScope();
         const active = document.activeElement;
         if (!(active instanceof HTMLElement) || active === document.body || !scope.contains(active) || !isFocusable(active)) {
@@ -158,19 +181,51 @@ class FocusEngine {
         // jump to some other row. Up and Down may leave a column to reach the bars, but
         // not from the rail, whose bottom would otherwise drop into the content.
         const allowMisaligned = (direction === 'up' || direction === 'down') && !inRail(active);
-        let next = nextInDirection(active, focusables(scope), direction, allowMisaligned);
+        // The rail is entered with Left only; Up and Down from the content stay out of it.
+        const rail = (direction === 'up' || direction === 'down') && !inRail(active) ? railOf(scope) : null;
+        const candidates = focusables(scope).filter((candidate) => !rail?.contains(candidate));
+        // Focus groups, for Left and Right: look first among the controls that share the
+        // smallest container with this one (a row's posters, a bar's buttons), then on
+        // the whole screen. Up and Down search the whole screen, so they cross rows.
+        const group = direction === 'left' || direction === 'right' ? focusGroup(active, candidates, scope) : null;
+        let next = (group && nextInDirection(active, candidates.filter((candidate) => group.contains(candidate)), direction, allowMisaligned)) ??
+            nextInDirection(active, candidates, direction, allowMisaligned);
         // Left enters the nav rail at the current tab, from any row, as TV apps do.
         if (direction === 'left' && !inRail(active) && (next === null || inRail(next))) {
             next = railEntry(scope) ?? next;
         }
         engineStats.moves += 1;
-        if (next) focusElement(next);
+        if (next) {
+            focusElement(next);
+        } else if (retry && (direction === 'up' || direction === 'down') && scrollFurther(active, direction)) {
+            // Lists like Search and Discover render rows only as they scroll into view,
+            // so there may be more below: scroll, then look again once they have rendered.
+            const from = active;
+            window.setTimeout(() => {
+                if (document.activeElement === from) this.move(direction, false);
+            }, SCROLL_RETRY_MS);
+        }
+    }
+
+    // Upstream dropdowns open with focus left on their label, where arrows and Back would
+    // act on the screen behind. TV menus take focus when they open, on the chosen option.
+    private enterOpenedMenu(opener: HTMLElement) {
+        if (document.activeElement !== opener) return;
+        const menu = openedMenu(opener);
+        if (!menu) return;
+        const options = focusables(menu);
+        const target = options.find((option) => option.getAttribute('aria-selected') === 'true') ?? options[0];
+        if (target) focusElement(target);
     }
 
     private back() {
         const layer = currentLayer();
         if (layer) {
             this.closeLayer(layer);
+        } else if (EPISODE_PATH.test(this.navigation.path)) {
+            // An episode's streams replace the series page in history; Back goes to its
+            // episode list, as on a TV, rather than past the series.
+            this.navigate(this.navigation.path.replace(EPISODE_PATH, '/$1'), { replace: true });
         } else if (this.navigation.path !== '/') {
             // Home is the floor: Back never leaves Board through older history.
             this.goBack();
@@ -208,13 +263,25 @@ class FocusEngine {
         const view = topRoute();
         if (view !== this.view) {
             this.view = view;
-            const restore = this.navigation.type === 'POP' && view !== null && this.memory.has(view, this.navigation.entry);
+            const restore = this.navigation.type === 'POP' && view !== null && this.memory.has(view, this.navigation.entry, this.place);
             this.pending = { mode: restore ? 'restore' : 'initial', since: Date.now() };
         }
 
-        // An open layer manages its own focus (react-focus-lock).
-        if (!view || openLayer()) return;
+        if (!view) return;
         const active = document.activeElement;
+        // An open layer keeps focus inside itself (react-focus-lock), but upstream doesn't
+        // always move focus in when it opens: then start on its first control.
+        const layer = openLayer();
+        if (layer) {
+            if (!(active instanceof HTMLElement) || !layer.contains(active) || !isFocusable(active)) {
+                const first = focusables(layer)[0];
+                if (first) {
+                    engineStats.focused += 1;
+                    focusElement(first);
+                }
+            }
+            return;
+        }
         if (active && view.contains(active) && isFocusable(active)) {
             this.pending = null;
             // Content that was slow to load replaces a stopgap, until the first key press.
@@ -249,15 +316,17 @@ class FocusEngine {
     private pick(view: Element, pending: Pending): { element: HTMLElement, final: boolean } | null {
         const settled = Date.now() - pending.since >= SETTLE_MS;
         if (pending.mode === 'restore') {
-            const remembered = this.memory.recall(view, this.navigation.entry, Array.from(view.querySelectorAll(ALL_CONTROLS)));
+            const remembered = this.memory.recall(view, this.navigation.entry, this.place, Array.from(view.querySelectorAll(ALL_CONTROLS)));
             if (remembered && isFocusable(remembered)) return { element: remembered, final: true };
-            if (!settled && this.memory.has(view, this.navigation.entry)) return null;
+            if (!settled && this.memory.has(view, this.navigation.entry, this.place)) return null;
         }
 
         const candidates = focusables(view);
         const rule = START_RULES.find(({ path }) => path.test(this.navigation.path));
         if (rule) {
-            const preferred = candidates.find((candidate) => candidate.matches(rule.selector));
+            const preferred = rule.selectors
+                .map((selector) => candidates.find((candidate) => candidate.matches(selector)))
+                .find((candidate) => candidate !== undefined);
             if (preferred) {
                 // Rows load in any order: a poster below a row still loading is only a stopgap.
                 const loadingAbove = rule.wait && Array.from(view.querySelectorAll(LOADING)).some((row) => (

@@ -13,6 +13,11 @@ html[data-bigpicture] :focus {
     box-shadow: 0 0 1.5rem 0.6rem rgba(123, 91, 245, 0.8) !important;
 }
 
+/* Text fields sit in tight form layouts that clip an outer ring: draw theirs inside. */
+html[data-bigpicture] :is(input, textarea):focus {
+    outline-offset: -0.3rem !important;
+}
+
 /* Room around a control scrolled into view, so its ring and a row's heading stay visible. */
 html[data-bigpicture] :is(a[href], button, input, select, textarea, [tabindex]) {
     scroll-margin: 4rem 3rem;

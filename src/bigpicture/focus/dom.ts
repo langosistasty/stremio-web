@@ -15,14 +15,23 @@ const isShown = (element: Element) => (
     window.getComputedStyle(element).visibility !== 'hidden'
 );
 
-const isFocusable = (element: Element): element is HTMLElement => (
-    element instanceof HTMLElement &&
-    element.tabIndex >= 0 &&
-    !element.hasAttribute('data-focus-guard') &&
-    !(element as HTMLButtonElement).disabled &&
-    !element.closest('[inert], [aria-hidden="true"]') &&
-    isShown(element)
-);
+// Visually hidden form controls (the real checkbox behind a styled one) are skipped,
+// so focus never lands somewhere invisible.
+const isFocusable = (element: Element): element is HTMLElement => {
+    if (
+        !(element instanceof HTMLElement) ||
+        element.tabIndex < 0 ||
+        element.hasAttribute('data-focus-guard') ||
+        (element as HTMLButtonElement).disabled ||
+        element.closest('[inert], [aria-hidden="true"]') ||
+        !isShown(element)
+    ) return false;
+    const { width, height } = element.getBoundingClientRect();
+    if (width < 2 || height < 2) return false;
+    // Only form inputs: other controls fade in from opacity 0 (upstream's fade-in
+    // animation) and must count as there from the start.
+    return !element.matches('input, select, textarea') || window.getComputedStyle(element).opacity !== '0';
+};
 
 // The route on screen: lower views stay mounted but hidden (see stremio-router).
 const topRoute = (): HTMLElement | null => {
@@ -67,12 +76,17 @@ const navigationScope = (): HTMLElement => {
     return (active && base.contains(active) && containRegion(active, base)) || base;
 };
 
-// The vertical nav rail's current tab, where Left enters the rail from any row.
-const railEntry = (scope: Element): HTMLElement | null => {
-    const rail = Array.from(scope.querySelectorAll('nav')).find((nav) => {
+// The vertical nav rail: a nav bar much taller than wide.
+const railOf = (scope: Element): HTMLElement | null => (
+    Array.from(scope.querySelectorAll('nav')).find((nav) => {
         const { width, height } = nav.getBoundingClientRect();
         return height > width * 2;
-    });
+    }) ?? null
+);
+
+// The rail's current tab, where Left enters the rail from any row.
+const railEntry = (scope: Element): HTMLElement | null => {
+    const rail = railOf(scope);
     if (!rail) return null;
     const tabs = focusables(rail);
     return tabs.find((tab) => tab.classList.contains('selected')) ?? tabs[0] ?? null;
@@ -106,8 +120,51 @@ const keepsArrow = (element: Element | null, direction: Direction) => {
     if (element?.getAttribute('role') === 'slider') return true;
     if (isTextInput(element)) {
         const { selectionStart, selectionEnd, value } = element;
-        if (selectionStart === null || selectionStart !== selectionEnd) return true;
+        // Email and number fields have no caret position to read: empty ones let the
+        // arrow go, filled ones keep it for editing (Up and Down still leave).
+        if (selectionStart === null) return value.length > 0;
+        if (selectionStart !== selectionEnd) return true;
         return direction === 'left' ? selectionStart > 0 : selectionStart < value.length;
+    }
+    return false;
+};
+
+// The smallest container around the element that holds other controls too, below the
+// scope; null when the element is alone up to the scope.
+const focusGroup = (element: Element, candidates: HTMLElement[], scope: Element): Element | null => {
+    for (let node = element.parentElement; node && node !== scope; node = node.parentElement) {
+        if (candidates.some((candidate) => candidate !== element && node.contains(candidate))) return node;
+    }
+    return null;
+};
+
+// A menu that opened next to the element (an upstream dropdown keeps focus on its label):
+// a shown contain region or popup within a few levels of the element.
+const openedMenu = (element: Element): HTMLElement | null => {
+    let node: Element | null = element;
+    for (let level = 0; level < 4 && node; level += 1, node = node.parentElement) {
+        const regions = Array.from(node.querySelectorAll<HTMLElement>('*')).filter((candidate) => (
+            !candidate.contains(element) &&
+            isShown(candidate) &&
+            (candidate.matches(LAYER) ||
+                window.getComputedStyle(candidate).getPropertyValue('--spatial-navigation-contain').trim() === 'contain')
+        ));
+        const region = regions.find((candidate) => focusables(candidate).length > 0);
+        if (region) return region;
+    }
+    return null;
+};
+
+// Scrolls the element's nearest vertically scrollable ancestor by most of a screen, if
+// it can go further that way. Returns whether it scrolled.
+const scrollFurther = (element: Element, direction: 'up' | 'down') => {
+    for (let node = element.parentElement; node && node !== document.documentElement; node = node.parentElement) {
+        const { overflowY } = window.getComputedStyle(node);
+        if (!/(auto|scroll)/.test(overflowY) || node.scrollHeight <= node.clientHeight) continue;
+        const room = direction === 'down' ? node.scrollHeight - node.clientHeight - node.scrollTop : node.scrollTop;
+        if (room < 1) return false;
+        node.scrollBy({ top: (direction === 'down' ? 1 : -1) * Math.min(room, node.clientHeight * 0.6), behavior: 'instant' as ScrollBehavior });
+        return true;
     }
     return false;
 };
@@ -130,6 +187,11 @@ const fullyVisible = (element: HTMLElement) => {
 // do: rows stay in a steady place, and the top of a page is never scrolled away.
 const focusElement = (element: HTMLElement) => {
     element.focus({ preventScroll: true });
+    // Arriving in a text field puts the caret at the end, so Right leaves at once and
+    // Left starts editing.
+    if (isTextInput(element) && element.type !== 'number' && element.type !== 'email') {
+        element.setSelectionRange(element.value.length, element.value.length);
+    }
     if (!fullyVisible(element)) {
         element.scrollIntoView({ block: 'center', inline: 'nearest' });
     }
@@ -139,6 +201,7 @@ export type { Direction };
 export {
     currentLayer,
     focusElement,
+    focusGroup,
     focusables,
     inLayer,
     inRail,
@@ -147,6 +210,9 @@ export {
     keepsArrow,
     navigationScope,
     openLayer,
+    openedMenu,
     railEntry,
+    railOf,
+    scrollFurther,
     topRoute,
 };

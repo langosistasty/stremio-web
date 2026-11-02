@@ -4,8 +4,22 @@
 
 import type { BrowserContext, Route } from '@playwright/test';
 
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+
 const ITEMS_PER_CATALOG = 12;
 const POSTER_HOST = 'https://posters.e2e.invalid';
+// A short WebM clip (made by run.sh with ffmpeg), so the player has something to play.
+const MEDIA_HOST = 'https://media.e2e.invalid';
+const CLIP = join(__dirname, '..', 'fixtures', 'clip.webm');
+// Only one addon answers with streams, so each title gets the same three.
+const STREAM_HOST = 'watchhub.strem.io';
+
+const streams = () => ['1080p', '720p', '480p'].map((quality, index) => ({
+    name: `Fixture ${quality}`,
+    title: `Test stream ${index + 1}\n${quality}`,
+    url: `${MEDIA_HOST}/clip.webm?quality=${quality}`,
+}));
 
 const title = (type: string, catalog: string, index: number) => `${type} ${catalog} ${index + 1}`;
 // One id per catalog item, so every poster on screen has its own link.
@@ -40,6 +54,11 @@ const serveCatalogs = async (context: BrowserContext, delay: CatalogDelay = 0) =
         contentType: 'image/svg+xml',
         body: poster(decodeURIComponent(new URL(route.request().url()).pathname.slice(1, -4))),
     }));
+    await context.route(`${MEDIA_HOST}/**`, (route) => (
+        existsSync(CLIP) ?
+            route.fulfill({ status: 200, contentType: 'video/webm', body: readFileSync(CLIP) }) :
+            route.abort('blockedbyclient')
+    ));
     await context.route(RESOURCE, async (route) => {
         const [, resource, type, rawId, extra] = new URL(route.request().url()).pathname.match(RESOURCE)!;
         const id = decodeURIComponent(rawId);
@@ -47,7 +66,13 @@ const serveCatalogs = async (context: BrowserContext, delay: CatalogDelay = 0) =
             case 'catalog': {
                 const delayMs = typeof delay === 'number' ? delay : delay[`${type}/${id}`] ?? 0;
                 if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
-                // Only the first page: a skip or search query gets an empty list.
+                // A search returns three matches per catalog; further pages are empty.
+                const search = extra && new URLSearchParams(decodeURIComponent(extra)).get('search');
+                if (search) {
+                    return json(route, {
+                        metas: [1, 2, 3].map((n) => meta(type, itemId(type, `${id}-${search}`, n - 1), `${type} ${search} ${n}`)),
+                    });
+                }
                 if (extra) return json(route, { metas: [] });
                 return json(route, {
                     metas: Array.from({ length: ITEMS_PER_CATALOG }, (_, index) => (
@@ -58,7 +83,7 @@ const serveCatalogs = async (context: BrowserContext, delay: CatalogDelay = 0) =
             case 'meta':
                 return json(route, { meta: meta(type, id, id.replace(/^tt/, '').replace(/-/g, ' ')) });
             case 'stream':
-                return json(route, { streams: [] });
+                return json(route, { streams: new URL(route.request().url()).hostname === STREAM_HOST ? streams() : [] });
             default:
                 return json(route, { subtitles: [] });
         }

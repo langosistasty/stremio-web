@@ -44,6 +44,23 @@ The local UI is its own origin, so it has its own login and settings, separate f
 - **Focus memory:** Back returns to the control that had focus, per history entry. A view that stayed mounted gets the same element back; a view that was rebuilt is matched by link, title and text.
 - **Closing layers:** Back sends the layer an Escape of its own, then an outside click, then presses its close or cancel button, stopping as soon as the layer is gone. In Big Picture, Escape never leaves fullscreen.
 - **Focus ring:** a white outline with a violet glow on the focused control, injected as a global stylesheet scoped to `html[data-bigpicture]`. Phase 3 makes it part of the TV layout.
+- **Per screen (Phase 4):**
+
+  | Screen | Starts on | Notes |
+  |---|---|---|
+  | Board, Discover, Library, Continue Watching | First poster | Waits for posters; rows that load out of order are handled |
+  | Search | Text field | Enter searches; Down enters the results; rows below render as the list scrolls |
+  | Details (movie, episode) | First stream | Streams arrive from addons, so it waits for them |
+  | Details (series) | First episode | Enter on an episode shows its streams; Back returns to the episode list, not past the series |
+  | Settings, Addons, Intro, Calendar | First content control | An addon's details dialog takes focus when it opens |
+- **Movement rules learned from the screens:**
+  - **Focus groups:** Left and Right look first inside the smallest group around the control (a row's posters, a bar's buttons).
+  - **What counts as "in that direction":** a control must start past the current one's middle, so overlapping layouts like a bar over the last row still work.
+  - **The rail:** it's only entered with Left; Up and Down stay out of it.
+  - **Covered controls:** a control fully on screen but covered by something else is skipped.
+  - **Lazy lists:** with nothing further down, Up and Down scroll the list and look again, for lists that render as they scroll (Search, Discover).
+  - **Dropdowns:** a dropdown that opens takes focus, on its chosen option, so Back closes it first.
+  - **Text fields:** arriving in one puts the cursor at the end; empty email fields let Left and Right go.
 - **The polyfill's search isn't used:** when its hit test fails (on Settings switches, for example), it measures from the scroll container instead of the control, which skips controls or moves the wrong way. `spatial.ts` replaces it with about 40 lines.
 
 ## TV layout
@@ -60,7 +77,8 @@ The local UI is its own origin, so it has its own login and settings, separate f
 ## Tests
 
 Keyboard-only Playwright tests live in `e2e/`, with their own `package.json` so the upstream lockfile stays untouched. They run against the production build at 1920x1080, in WebKit (the shell's engine) and Chromium.
-- **Offline:** the default addons answer from fixtures (`e2e/support/catalog.ts`), with optional delays to simulate a slow network.
+- **Offline:** the default addons answer from fixtures (`e2e/support/catalog.ts`): catalogs, search results, metadata, three streams per title (WatchHub), and posters. Optional delays simulate a slow network. Streams point to a WebM clip that `run.sh` generates with ffmpeg into `e2e/fixtures/` (not in git).
+- **Every screen is crawled:** `e2e/support/crawl.ts` follows every arrow move from a screen's start and fails if any visible control can't be reached. Library, Continue Watching and Calendar need an account, which can't be faked offline, so they're covered in their logged-out state.
 - **Fake shell:** covers the IPC paths.
 - **Keyboard only:** any mouse input fails the test.
 - **WebKit as on the TV:** the WebKit project uses a WebKitGTK-on-Linux user agent, because upstream behaves differently there; for example, it turns off view transitions.
@@ -139,6 +157,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 1 | 2026-11-02 | Added `src/bigpicture/`, `e2e/` and `tv/launch.sh`. Changed `src/App/App.js` (renders `<BigPicture />`, 3 lines) and `src/routes/Settings/Interface/Interface.tsx` (the switch, 5 lines) |
 | 2 | 2026-11-02 | Added `src/bigpicture/focus/`. Changed `src/common/Fullscreen/FullscreenProvider.tsx` (Escape doesn't leave fullscreen in Big Picture, 2 lines) and `src/routes/Library/Library.js` (the redirect replaces its history entry, 1 line plus a comment) |
 | 3 | 2026-11-02 | TV size and safe margin (`store.ts`, `BigPictureSettings.tsx`, `focus/styles.ts`). Changed `src/App/useInterfaceScale.ts` (TV size multiplies the scale, 4 lines), `src/routes/Settings/Interface/Interface.tsx` (the Big Picture rows; the Escape-fullscreen row hidden in Big Picture) and `src/components/NavBar/HorizontalNavBar/HorizontalNavBar.js` (fullscreen button hidden in Big Picture, 4 lines) |
+| 4 | 2026-11-02 | Every screen: start rules, focus groups, lazy lists, dropdowns and dialogs, details Back (all in `src/bigpicture/focus/`), and `e2e/screens.e2e.ts` with the crawler. No upstream files changed |
 
 ## License
 

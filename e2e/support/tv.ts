@@ -114,7 +114,12 @@ const test = base.extend<Options & { remote: Remote }>({
                 await expect.poll(() => page.evaluate(() => {
                     const view = document.querySelector('.routes-container')?.lastElementChild;
                     const active = document.activeElement;
-                    return !!view && !!active && active !== document.body && view.contains(active);
+                    // Upstream's view transition (outside Linux WebKit) must have finished too.
+                    const transitioning = document.getAnimations().some((animation) => (
+                        animation.playState === 'running' &&
+                        ((animation.effect as KeyframeEffect | null)?.pseudoElement ?? '').startsWith('::view-transition')
+                    ));
+                    return !transitioning && !!view && !!active && active !== document.body && view.contains(active);
                 })).toBe(true);
             },
             focusBy: async (key, target, limit = 80) => {

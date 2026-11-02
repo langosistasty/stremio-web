@@ -149,7 +149,7 @@ test.describe('in Big Picture', () => {
         await expect(slider).toBeFocused();
     });
 
-    test('Search starts in the text field, whose caret keeps Left and Right', async ({ remote }) => {
+    test('Search starts in the text field, whose caret keeps Left and Right, and Down enters the results', async ({ remote }) => {
         const input = remote.view().locator('input').first();
         await remote.open('/search', BIG_PICTURE);
         await expect(input).toBeFocused();
@@ -157,8 +157,12 @@ test.describe('in Big Picture', () => {
         await remote.press('ArrowLeft');
         await expect(input).toBeFocused();
         expect(await input.evaluate((element: HTMLInputElement) => element.selectionStart)).toBe(2);
+        // Enter searches; Down then moves from the field into the results.
+        await remote.press('Enter');
+        await expect(remote.page).toHaveURL(/search=abc/);
+        await expect(remote.view().getByTitle('movie abc 1', { exact: true })).toBeVisible();
         await remote.press('ArrowDown');
-        await expect(input).not.toBeFocused();
+        await expect(remote.focused()).toHaveAttribute('href', /#\/detail\//);
     });
 
     test('Settings starts in its content, not the nav bars', async ({ remote }) => {

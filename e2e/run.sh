@@ -27,6 +27,14 @@ fi
 [ -f "$REPO/build/index.html" ] || { echo "No build in $REPO/build. Run without --no-build." >&2; exit 1; }
 
 cd "$E2E"
+# The player tests play a short WebM clip; it is generated, not kept in git.
+if [ ! -s fixtures/clip.webm ] && command -v ffmpeg >/dev/null 2>&1; then
+    mkdir -p fixtures
+    ffmpeg -hide_banner -loglevel error -y \
+        -f lavfi -i "testsrc2=size=640x360:rate=25:duration=30" \
+        -f lavfi -i "sine=frequency=440:duration=30" \
+        -c:v libvpx -b:v 300k -c:a libvorbis fixtures/clip.webm
+fi
 # --ignore-workspace: this package is separate from the upstream one on purpose.
 [ -d node_modules/@playwright/test ] || $PNPM install --ignore-workspace
 

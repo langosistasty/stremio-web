@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 import { useEffect, useLayoutEffect, useRef } from 'react';
-import { useLocation, useNavigationType } from 'react-router';
+import { useLocation, useNavigate, useNavigationType } from 'react-router';
 import { useFullscreen, usePlatform } from 'stremio/common';
 import { useGoBack } from 'stremio/router';
 import { useBigPictureLayout } from './store';
@@ -19,6 +19,7 @@ const BigPicture = () => {
     const location = useLocation();
     const navigationType = useNavigationType();
     const goBack = useGoBack();
+    const navigate = useNavigate();
 
     // Styles and later phases key off this attribute; nothing changes while it is absent.
     useEffect(() => {
@@ -43,8 +44,10 @@ const BigPicture = () => {
 
     const goBackRef = useRef(goBack);
     goBackRef.current = goBack;
+    const navigateRef = useRef(navigate);
+    navigateRef.current = navigate;
     const engineRef = useRef<FocusEngine | null>(null);
-    const navigation = { entry: location.key, type: navigationType, path: location.pathname };
+    const navigation = { entry: location.key, type: navigationType, path: location.pathname, search: location.search };
     const navigationRef = useRef(navigation);
     navigationRef.current = navigation;
 
@@ -57,7 +60,7 @@ const BigPicture = () => {
     useEffect(() => {
         if (!enabled) return;
         installStyles();
-        const engine = new FocusEngine(() => goBackRef.current());
+        const engine = new FocusEngine(() => goBackRef.current(), (to, options) => navigateRef.current(to, options));
         engine.setNavigation(navigationRef.current);
         engineRef.current = engine;
         const stopEngine = engine.start();

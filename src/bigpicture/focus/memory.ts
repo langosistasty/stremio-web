@@ -29,23 +29,27 @@ const find = ({ signature: wanted, nth }: Descriptor, candidates: HTMLElement[])
 class FocusMemory {
     // A view that stays mounted below another one keeps its elements.
     private byView = new WeakMap<Element, HTMLElement>();
-    // Keyed by history entry, for views that were unmounted in between.
+    // Keyed by history entry, for views that were unmounted in between, and by path,
+    // for entries that were replaced (an episode's streams replace its series page).
     private byEntry = new Map<string, Descriptor>();
+    private byPath = new Map<string, Descriptor>();
 
-    remember(view: Element, entry: string, element: HTMLElement, candidates: HTMLElement[]) {
+    remember(view: Element, entry: string, path: string, element: HTMLElement, candidates: HTMLElement[]) {
+        const descriptor = describe(element, candidates);
         this.byView.set(view, element);
-        this.byEntry.set(entry, describe(element, candidates));
+        this.byEntry.set(entry, descriptor);
+        this.byPath.set(path, descriptor);
     }
 
-    recall(view: Element, entry: string, candidates: HTMLElement[]): HTMLElement | null {
+    recall(view: Element, entry: string, path: string, candidates: HTMLElement[]): HTMLElement | null {
         const element = this.byView.get(view);
         if (element && candidates.includes(element)) return element;
-        const descriptor = this.byEntry.get(entry);
+        const descriptor = this.byEntry.get(entry) ?? this.byPath.get(path);
         return descriptor ? find(descriptor, candidates) : null;
     }
 
-    has(view: Element, entry: string) {
-        return this.byView.has(view) || this.byEntry.has(entry);
+    has(view: Element, entry: string, path: string) {
+        return this.byView.has(view) || this.byEntry.has(entry) || this.byPath.has(path);
     }
 }
 
