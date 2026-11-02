@@ -11,7 +11,30 @@ Flatpak com.stremio.Stremio (unmodified: GTK4, WebKitGTK, libmpv, streaming serv
 
 - **Video:** mpv in the shell plays MKV, HEVC and surround audio directly, with GPU decoding where the driver allows it.
 - **Upstream code:** `stremio-core` and the shell aren't changed.
-- **Own code:** new files live in `tv/` and, from Phase 1, `src/bigpicture/` and `e2e/`.
+- **Own code:** new files live in `tv/`, `src/bigpicture/` and `e2e/`. Upstream files only get small, marked hooks into them (see the change log).
+
+## Turning it on
+
+| Way | Effect |
+|---|---|
+| Settings > Interface > **Big Picture mode** | Saved for this UI's address |
+| `?bigpicture=1` or `?bigpicture=0` in the URL | Forces it on or off for that launch only, without changing the saved setting. Works before the hash or inside it (`#/?bigpicture=1`) |
+| `tv/launch.sh` | Serves the UI on `127.0.0.1:18470` and opens Stremio with `?bigpicture=1`; `--normal` uses the saved setting |
+
+When it's on, the page carries `data-bigpicture` on `<html>`, and inside the shell the window goes fullscreen.
+
+The local UI is its own origin, so it has its own login and settings, separate from Stremio's built-in UI. Keep the port the same: changing it starts from a blank profile.
+
+## Tests
+
+Keyboard-only Playwright tests live in `e2e/`, with their own `package.json` so the upstream lockfile stays untouched. They run against the production build, offline, at 1920x1080, in WebKit (the shell's engine) and Chromium. A fake shell covers the IPC paths. Any mouse input fails the test.
+
+```bash
+e2e/run.sh              # build, then test
+e2e/run.sh --no-build   # test the existing build
+```
+
+Playwright's WebKit only supports Ubuntu and Debian libraries, so `run.sh` uses the official Playwright container when Docker or Podman is available. Without either, it runs on the host, and on other distros only Chromium runs.
 
 ## Trying it on a TV PC
 
@@ -48,9 +71,10 @@ The streaming server only accepts cross-origin requests from Stremio's own domai
 
 GPLv2 section 2(a) asks modified files to carry a notice of the change, so this list is kept up to date.
 
-| Phase | Change |
-|---|---|
-| 0 | Added `tv/` and this file. No upstream files changed |
+| Phase | Date | Change |
+|---|---|---|
+| 0 | 2026-11-02 | Added `tv/` and this file. No upstream files changed |
+| 1 | 2026-11-02 | Added `src/bigpicture/`, `e2e/` and `tv/launch.sh`. Changed `src/App/App.js` (renders `<BigPicture />`, 3 lines) and `src/routes/Settings/Interface/Interface.tsx` (the switch, 5 lines) |
 
 ## License
 

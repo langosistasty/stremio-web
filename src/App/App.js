@@ -16,6 +16,8 @@ const { default: UpdaterBanner } = require('./UpdaterBanner');
 const { default: ShortcutsModal } = require('./ShortcutsModal');
 const { default: GamepadModal } = require('./GamepadModal');
 const { default: useInterfaceScale } = require('./useInterfaceScale');
+// Big Picture (fork change, 2026-11-02): 10-foot TV mode, see BIGPICTURE.md.
+const { BigPicture } = require('stremio/bigpicture');
 const styles = require('./styles');
 
 const ProtectedRoutes = withCoreSuspender(Routes);
@@ -169,6 +171,7 @@ const App = () => {
                                     {
                                         gamepadModalOpen && <GamepadModal onClose={closeGamepadModal}/>
                                     }
+                                    <BigPicture />
                                     <ServicesToaster />
                                     <SearchParamsHandler />
                                     <DeepLinkHandler />
