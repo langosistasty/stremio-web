@@ -1,0 +1,159 @@
+<!doctype html>
+<!-- Stremio Big Picture: doctor probe. Runs inside the Stremio shell and reports what its WebKit exposes. SPDX-License-Identifier: GPL-2.0-only -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stremio TV input test</title>
+<style>
+    html, body { height: 100%; margin: 0; background: #101426; color: #fff; font: 3.2vh/1.4 sans-serif; }
+    main { box-sizing: border-box; height: 100%; padding: 6vh 6vw; display: flex; flex-direction: column; gap: 3vh; }
+    h1 { margin: 0; font-size: 6vh; }
+    p { margin: 0; }
+    #count { font-size: 12vh; font-weight: 700; color: #8ea2ff; }
+    #log { flex: 1; overflow: hidden; font: 2.8vh/1.35 monospace; white-space: pre; color: #c9d2ff; }
+</style>
+</head>
+<body>
+<main>
+    <h1>Press your controls now</h1>
+    <p>Keyboard or remote: arrows, Enter, Back, Esc and media keys. Gamepad: every button and the D-pad. Phone remote: anything you use. This window closes by itself.</p>
+    <div id="count"></div>
+    <div id="log"></div>
+</main>
+<script>
+(() => {
+    const params = new URLSearchParams(location.search);
+    const seconds = Number(params.get('seconds')) || 25;
+    const startedAt = performance.now();
+    const elapsed = () => Math.round(performance.now() - startedAt);
+    const logElement = document.getElementById('log');
+    const countElement = document.getElementById('count');
+    const lines = [];
+    const show = (line) => {
+        lines.push(line);
+        logElement.textContent = lines.slice(-12).join('\n');
+    };
+
+    const safely = (read) => {
+        try {
+            return read();
+        } catch (error) {
+            return `error: ${error.message}`;
+        }
+    };
+
+    const webgl = () => {
+        const gl = document.createElement('canvas').getContext('webgl');
+        if (!gl) return null;
+        const info = gl.getExtension('WEBGL_debug_renderer_info');
+        return {
+            vendor: gl.getParameter(info ? info.UNMASKED_VENDOR_WEBGL : gl.VENDOR),
+            renderer: gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER),
+        };
+    };
+
+    const report = {
+        userAgent: navigator.userAgent,
+        secureContext: window.isSecureContext,
+        shell: {
+            ipcKey: window.stremio_server_ipc_key ?? null,
+            qtTransport: typeof window.qt?.webChannelTransport,
+        },
+        apis: {
+            getGamepads: typeof navigator.getGamepads,
+            webAssembly: typeof WebAssembly,
+            cssZoom: safely(() => CSS.supports('zoom', '1.5')),
+            fullscreenEnabled: document.fullscreenEnabled === true,
+        },
+        display: {
+            viewport: `${window.innerWidth}x${window.innerHeight}`,
+            screen: `${window.screen.width}x${window.screen.height}`,
+            devicePixelRatio: window.devicePixelRatio,
+        },
+        webgl: safely(webgl),
+        streamingServer: null,
+        keys: [],
+        gamepads: {},
+        gamepadEvents: [],
+        doubleInputSuspected: false,
+    };
+
+    window.addEventListener('keydown', (event) => {
+        event.preventDefault();
+        if (event.repeat) return;
+        report.keys.push({ t: elapsed(), key: event.key, code: event.code, keyCode: event.keyCode });
+        show(`key      ${event.key} (${event.code}, ${event.keyCode})`);
+    }, true);
+
+    const previousButtons = new Map();
+    const previousAxes = new Map();
+    const pollGamepads = () => {
+        const pads = typeof navigator.getGamepads === 'function' ? Array.from(navigator.getGamepads()) : [];
+        pads.filter(Boolean).forEach((pad) => {
+            if (!report.gamepads[pad.index]) {
+                report.gamepads[pad.index] = { id: pad.id, mapping: pad.mapping, buttons: pad.buttons.length, axes: pad.axes.length };
+                show(`gamepad  connected: ${pad.id} (mapping: ${pad.mapping || 'none'})`);
+            }
+            const buttons = previousButtons.get(pad.index) ?? [];
+            pad.buttons.forEach((button, index) => {
+                if (button.pressed && !buttons[index]) {
+                    report.gamepadEvents.push({ t: elapsed(), pad: pad.index, button: index });
+                    show(`gamepad  button ${index}`);
+                }
+                buttons[index] = button.pressed;
+            });
+            previousButtons.set(pad.index, buttons);
+            const axes = previousAxes.get(pad.index) ?? [];
+            pad.axes.forEach((value, index) => {
+                const position = Math.abs(value) > 0.5 ? Math.sign(value) : 0;
+                if (position !== 0 && axes[index] !== position) {
+                    report.gamepadEvents.push({ t: elapsed(), pad: pad.index, axis: index, direction: position });
+                    show(`gamepad  axis ${index} ${position > 0 ? '+' : '-'}`);
+                }
+                axes[index] = position;
+            });
+            previousAxes.set(pad.index, axes);
+        });
+        requestAnimationFrame(pollGamepads);
+    };
+    requestAnimationFrame(pollGamepads);
+
+    const checkStreamingServer = async () => {
+        let last = 'not attempted';
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+            try {
+                const response = await fetch('http://127.0.0.1:11470/settings');
+                return { reachable: true, status: response.status };
+            } catch (error) {
+                last = error.message;
+                await new Promise((resolve) => setTimeout(resolve, 500));
+            }
+        }
+        return { reachable: false, error: last };
+    };
+
+    const finish = async (serverCheck) => {
+        report.streamingServer = await serverCheck;
+        // A gamepad press that also arrives as a key means something outside the page
+        // (for example the desktop's input handler) translates the pad into keys.
+        report.doubleInputSuspected = report.gamepadEvents.some(({ t }) => (
+            report.keys.some((key) => Math.abs(key.t - t) < 120)
+        ));
+        await fetch('/report', { method: 'POST', body: JSON.stringify(report) });
+        countElement.textContent = 'Done';
+    };
+
+    const serverCheck = checkStreamingServer();
+    const endAt = Date.now() + seconds * 1000;
+    const timer = setInterval(() => {
+        const left = Math.ceil((endAt - Date.now()) / 1000);
+        countElement.textContent = left > 0 ? String(left) : '';
+        if (left <= 0) {
+            clearInterval(timer);
+            finish(serverCheck);
+        }
+    }, 200);
+})();
+</script>
+</body>
+</html>
