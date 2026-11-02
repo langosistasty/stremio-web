@@ -211,10 +211,12 @@ check_nvidia() {
         pass "NVIDIA driver is loaded"
     fi
 
+    # Some driver packages make this file root-only. A Wayland session that is already
+    # running on the NVIDIA driver proves modesetting is on, so only a readable N warns.
     local modeset
     modeset="$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null)"
-    if [ "${WAYLAND_DISPLAY:-}" != "" ] && [ "$modeset" != "Y" ]; then
-        warn "nvidia-drm.modeset is '${modeset:-unknown}', Wayland normally needs Y."
+    if [ "${WAYLAND_DISPLAY:-}" != "" ] && [ "$modeset" = "N" ]; then
+        warn "nvidia-drm.modeset is N; Wayland normally needs Y."
     fi
 }
 
@@ -331,7 +333,6 @@ print(f"[{state(report['apis']['getGamepads'] == 'function')}] Gamepad API is av
 print(f"[{state(report['apis']['webAssembly'] == 'object')}] WebAssembly is available")
 display = report["display"]
 print(f"       Display: viewport {display['viewport']}, screen {display['screen']}, scale {display['devicePixelRatio']}")
-print(f"       WebGL: {report['webgl']}")
 print(f"       Keys pressed: {len(report['keys'])}")
 seen = {}
 for key in report["keys"]:
@@ -347,6 +348,8 @@ if pads:
     print(f"         Buttons seen: {buttons}; axes seen: {axes}")
     if report["doubleInputSuspected"]:
         print("[WARN] Gamepad presses also arrived as keys, so another program translates the pad. Big Picture must handle this to avoid double input.")
+    elif report["gamepadEvents"]:
+        print("[PASS] No double input: gamepad presses did not also arrive as keys")
 else:
     print("[INFO] No gamepad seen. WebKit only reveals a pad after a button press during the test.")
 EOF
