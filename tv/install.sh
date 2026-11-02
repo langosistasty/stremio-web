@@ -7,12 +7,22 @@ SOURCE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 TARGET="${XDG_DATA_HOME:-$HOME/.local/share}/stremio-bigpicture"
 APP_ID="com.stremio.Stremio"
 ASSUME_YES=0
+AUTOSTART=""
+
+usage() {
+    echo "Usage: install.sh [options]"
+    echo "  --yes            Install the Stremio Flatpak without asking, if it's missing"
+    echo "  --autostart      Also open Stremio Big Picture when you log in (for a TV that only does this)"
+    echo "  --no-autostart   Stop opening it at login"
+}
 
 for argument in "$@"; do
     case "$argument" in
         -y|--yes) ASSUME_YES=1 ;;
-        -h|--help) echo "Usage: install.sh [--yes]   (--yes installs the Stremio Flatpak without asking)"; exit 0 ;;
-        *) echo "Unknown option: $argument" >&2; exit 64 ;;
+        --autostart) AUTOSTART=on ;;
+        --no-autostart) AUTOSTART=off ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "Unknown option: $argument" >&2; usage >&2; exit 64 ;;
     esac
 done
 
@@ -54,19 +64,59 @@ else
     esac
 fi
 
-# A launcher entry lets the doctor run from Bigscreen without opening a terminal first.
+# Launcher entries: Big Picture itself, for Plasma Bigscreen and any other launcher, and
+# the doctor. Exec paths are quoted, so a home folder with spaces works.
 APPLICATIONS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 mkdir -p "$APPLICATIONS"
+ENTRY="$APPLICATIONS/stremio-bigpicture.desktop"
+cat > "$ENTRY" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Stremio Big Picture
+GenericName=Media Center
+Comment=Stremio for the TV, with a remote, gamepad or keyboard
+Icon=com.stremio.Stremio
+Exec="$TARGET/launch.sh"
+Terminal=false
+Categories=AudioVideo;Video;Player;TV;
+Keywords=stremio;tv;movies;series;streaming;
+StartupNotify=false
+StartupWMClass=com.stremio.Stremio
+EOF
+echo "Added \"Stremio Big Picture\" to your applications"
+
+AUTOSTART_ENTRY="${XDG_CONFIG_HOME:-$HOME/.config}/autostart/stremio-bigpicture.desktop"
+case "$AUTOSTART" in
+    on)
+        mkdir -p "$(dirname "$AUTOSTART_ENTRY")"
+        cp "$ENTRY" "$AUTOSTART_ENTRY"
+        echo "Stremio Big Picture will open when you log in (undo: install.sh --no-autostart)"
+        ;;
+    off)
+        rm -f "$AUTOSTART_ENTRY"
+        echo "Stremio Big Picture will no longer open at login"
+        ;;
+    *)
+        # A reinstall refreshes an existing autostart entry, which may point at an old path.
+        if [ -f "$AUTOSTART_ENTRY" ]; then cp "$ENTRY" "$AUTOSTART_ENTRY"; fi
+        ;;
+esac
+
 cat > "$APPLICATIONS/stremio-bigpicture-doctor.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Stremio TV Doctor
 Comment=Check whether this PC can run Stremio Big Picture
 Icon=utilities-system-monitor
-Exec=$TARGET/doctor.sh
+Exec="$TARGET/doctor.sh"
 Terminal=true
-Categories=System;Utility;
+Categories=Utility;
 EOF
 
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "$APPLICATIONS" >/dev/null 2>&1
+fi
+
 echo
-echo "Next: run $TARGET/doctor.sh"
+echo "Open \"Stremio Big Picture\" from your launcher, or run: $TARGET/launch.sh"
+echo "To check this PC first, run: $TARGET/doctor.sh"

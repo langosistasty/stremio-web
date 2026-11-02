@@ -75,14 +75,45 @@ port_open() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
 app_running() { flatpak ps --columns=application 2>/dev/null | grep -qx "$APP_ID"; }
 now_ms() { date +%s%3N; }
 
-# A second launch would only raise the existing window and ignore the UI address.
+# Started from a desktop entry there's no terminal: say it on screen as well.
+tell() {
+    echo "$1" >&2
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send --app-name="Stremio Big Picture" --icon=com.stremio.Stremio "Stremio Big Picture" "$1" 2>/dev/null
+    elif command -v kdialog >/dev/null 2>&1; then
+        kdialog --title "Stremio Big Picture" --passivepopup "$1" 10 2>/dev/null
+    fi
+}
+
+# The process listening on a local port, if it is ours to see.
+port_owner() {
+    ss -ltnpH "sport = :$1" 2>/dev/null | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2
+}
+
 if app_running; then
-    echo "Stremio is already running. Quit it (also from the tray), then launch again." >&2
+    if port_open "$PORT"; then
+        # Big Picture is already open: bring its window up rather than start another.
+        flatpak run "$APP_ID" >/dev/null 2>&1 &
+        exit 0
+    fi
+    # A second start would only raise the normal Stremio window and ignore this UI.
+    tell "Stremio is already open. Quit it from its tray icon, then open Stremio Big Picture again."
     exit 75
 fi
 if port_open "$PORT"; then
-    echo "Port $PORT is already in use. Close what uses it, or pass --port (that means a separate login)." >&2
-    exit 75
+    # Left over from a session that crashed: our own UI server can go.
+    OWNER="$(port_owner "$PORT")"
+    if [ -n "$OWNER" ] && tr '\0' ' ' < "/proc/$OWNER/cmdline" 2>/dev/null | grep -q 'serve.py'; then
+        kill "$OWNER" 2>/dev/null
+        for _ in $(seq 1 20); do
+            port_open "$PORT" || break
+            sleep 0.25
+        done
+    fi
+    if port_open "$PORT"; then
+        tell "Port $PORT is in use by another program, so Stremio Big Picture can't start. Close it, or use --port (that means a separate login)."
+        exit 75
+    fi
 fi
 
 if [ "$SAFE_RENDER" = auto ]; then
@@ -151,8 +182,37 @@ stop_app() {
     done
 }
 
+# The streaming server accepts this UI's address only because of how the shell sets
+# NO_CORS (see BIGPICTURE.md). Check once per session, so an upstream change is caught.
+check_cors() {
+    for _ in $(seq 1 120); do
+        port_open 11470 && break
+        sleep 0.5
+    done
+    local allowed
+    allowed="$(python3 -I - "http://127.0.0.1:$PORT" <<'PY'
+import sys, urllib.request
+request = urllib.request.Request("http://127.0.0.1:11470/settings", headers={"Origin": sys.argv[1]})
+try:
+    with urllib.request.urlopen(request, timeout=5) as response:
+        print(response.headers.get("Access-Control-Allow-Origin") or "none")
+except Exception as error:
+    print(f"error: {error}")
+PY
+)"
+    case "$allowed" in
+        "*"|"http://127.0.0.1:$PORT") echo "CORS OK: the streaming server accepts this UI ($allowed)." >> "$RECORDING/events.log.info" ;;
+        error:*) echo "CORS CHECK could not reach the streaming server: ${allowed#error: }." >> "$RECORDING/events.log" ;;
+        *)
+            echo "CORS CHECK FAILED: the streaming server no longer accepts this UI's address (it answered: $allowed). Playback and server settings won't work; see BIGPICTURE.md." >> "$RECORDING/events.log"
+            tell "The Stremio streaming server rejects this UI's address after an update, so playing won't work. See BIGPICTURE.md, \"Known fragile point\"."
+            ;;
+    esac
+}
+
 RESTARTS=()
 start_app
+check_cors &
 LAST_TICK=$(date +%s)
 while kill -0 "$APP_PID" 2>/dev/null; do
     sleep 5

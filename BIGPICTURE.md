@@ -19,7 +19,7 @@ Flatpak com.stremio.Stremio (unmodified: GTK4, WebKitGTK, libmpv, streaming serv
 |---|---|
 | Settings > Interface > **Big Picture mode** | Saved for this UI's address |
 | `?bigpicture=1` or `?bigpicture=0` in the URL | Forces it on or off for that launch only, without changing the saved setting. Works before the hash or inside it (`#/?bigpicture=1`) |
-| `tv/launch.sh` | Serves the UI on `127.0.0.1:18470` and opens Stremio with `?bigpicture=1`; `--normal` uses the saved setting |
+| **Stremio Big Picture** in the launcher, or `tv/launch.sh` | Serves the UI on `127.0.0.1:18470` and opens Stremio with `?bigpicture=1`; `launch.sh --normal` uses the saved setting |
 
 When it's on, the page carries `data-bigpicture` on `<html>`, and inside the shell the window goes fullscreen.
 
@@ -136,6 +136,21 @@ e2e/run.sh --no-build   # test the existing build
 
 Playwright's WebKit only supports Ubuntu and Debian libraries, so `run.sh` uses the official Playwright container when Docker or Podman is available. Without either, it runs on the host, and on other distros only Chromium runs.
 
+## Launching
+
+`tv/install.sh` adds **Stremio Big Picture** to the applications. That's what Plasma Bigscreen and any other launcher show, with Stremio's icon, under Video and TV. It runs `launch.sh`, which:
+- **Serves and opens:** serves this UI on `127.0.0.1:18470`, opens the unmodified Stremio Flatpak with it, and stops the server when Stremio quits.
+- **A second start:** if Big Picture is already running, it brings its window up. If a normal Stremio is open, it says so in a desktop notification, since a second start would only raise that window and ignore this UI.
+- **A crashed session:** it takes the port back from a UI server left over from a crashed session. If another program holds the port, it refuses and says so.
+- **CORS check:** once per session it checks that the streaming server still accepts this UI's address (see Known fragile point), and records and notifies if it doesn't.
+- **Recording, watchdog and NVIDIA:** see "Freezes" below.
+
+`install.sh --autostart` also opens it at login, for a PC that's only a TV; `--no-autostart` undoes it. A reinstall keeps the choice and refreshes the entry.
+
+Running the UI server as a systemd user unit was planned, but the launcher already starts and stops it with Stremio, restarts on freezes and records sessions. A second process manager would only add ways for the two to disagree.
+
+`tv/tests/launcher.test.sh` tests `install.sh` and `launch.sh` with a fake `flatpak` command and a throwaway home folder: the entries, autostart, a normal session, a second start, a leftover server, a busy port, the watchdog, and the CORS check against a fake streaming server.
+
 ## Trying it on a TV PC
 
 On the dev machine, make a bundle. This needs `ffmpeg` with `libx264`, `libx265` and `libsvtav1`:
@@ -149,9 +164,10 @@ The bundle lands in `../tv-dist/`. Copy it to the TV PC any way you like, then r
 ```bash
 tar -xzf stremio-bigpicture-*.tar.gz
 cd stremio-bigpicture
-./install.sh
-~/.local/share/stremio-bigpicture/doctor.sh
+./install.sh                 # add --autostart to open it at every login
 ```
+
+Then open **Stremio Big Picture** from the launcher. To check a new PC first, run `~/.local/share/stremio-bigpicture/doctor.sh`.
 
 The doctor changes nothing on the system. It writes `~/stremio-bigpicture-report.txt`, with home paths, user name and host name removed. Run it from a terminal on the TV's desktop, or open **Stremio TV Doctor** from the launcher.
 
@@ -190,7 +206,9 @@ A freeze on the TV PC was reported on 2026-11-02 during the Phase 2 test, before
 
 ## Known fragile point
 
-The streaming server only accepts cross-origin requests from Stremio's own domains, and its `/proxy` route rejects `http://` targets. A local UI works because the shell always sets `NO_CORS`, and the server treats the value `"0"` as true. If upstream fixes that, the doctor's "Page can reach the streaming server" check fails. The fallback is to serve the UI and the server from one origin.
+The streaming server only accepts cross-origin requests from Stremio's own domains, and its `/proxy` route rejects `http://` targets. A local UI works because the shell always sets `NO_CORS`, and the server treats the value `"0"` as true. If upstream fixes that, the launcher's CORS check and the doctor's "Page can reach the streaming server" both report it.
+
+The fallback would be one origin for both, with the UI server proxying the streaming server. It isn't built, because it isn't needed today. Video bytes would also pass through Python on an old CPU, so it should be designed when it's needed, not before.
 
 ## Changes from upstream
 
@@ -205,6 +223,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 4 | 2026-11-02 | Every screen: start rules, focus groups, lazy lists, dropdowns and dialogs, details Back (all in `src/bigpicture/focus/`), and `e2e/screens.e2e.ts` with the crawler. No upstream files changed |
 | 5 | 2026-11-02 | Gamepad, remote keys and on-screen keyboard (`src/bigpicture/input/`). Changed `src/App/App.js` (upstream's gamepad reader off in Big Picture, 3 lines) |
 | 6 | 2026-11-02 | Player keys, overlay and menus (`src/bigpicture/focus/player.ts`), polyfill off in Big Picture, `e2e/player.e2e.ts`. No upstream files changed |
+| 7 | 2026-11-03 | Launcher entry and autostart (`tv/install.sh`), second-start, leftover-server and busy-port handling, notifications and the CORS check (`tv/launch.sh`), `tv/tests/launcher.test.sh`. No upstream files changed |
 
 ## License
 
