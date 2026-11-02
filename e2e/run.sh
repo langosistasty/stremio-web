@@ -31,8 +31,8 @@ cd "$E2E"
 if [ ! -s fixtures/clip.webm ] && command -v ffmpeg >/dev/null 2>&1; then
     mkdir -p fixtures
     ffmpeg -hide_banner -loglevel error -y \
-        -f lavfi -i "testsrc2=size=640x360:rate=25:duration=30" \
-        -f lavfi -i "sine=frequency=440:duration=30" \
+        -f lavfi -i "testsrc2=size=640x360:rate=25:duration=120" \
+        -f lavfi -i "sine=frequency=440:duration=120" \
         -c:v libvpx -b:v 300k -c:a libvorbis fixtures/clip.webm
 fi
 # --ignore-workspace: this package is separate from the upstream one on purpose.

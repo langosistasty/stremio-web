@@ -36,7 +36,7 @@ The local UI is its own origin, so it has its own login and settings, separate f
 | Enter | Activates the control (upstream behaviour) |
 | Escape, Backspace, BrowserBack | Back: closes the open menu, popup or dialog first, otherwise goes back in history. Home is the floor. Backspace still deletes text in a text field |
 
-- **One key handler:** it runs in the capture phase, before any upstream handler, so a key Big Picture uses never also triggers an upstream shortcut. The player keeps its own keys until Phase 6.
+- **One key handler:** it runs in the capture phase, before any upstream handler, so a key Big Picture uses never also triggers an upstream shortcut. The bundled spatial-navigation polyfill is switched off (its `keyMode` set to `NONE`) while Big Picture is on. The player has its own rules (below).
 - **Where arrows stay:** inside an upstream `--spatial-navigation-contain` menu, else the topmost open popup or dialog (react-focus-lock marks them), else the route on screen.
 - **Controls that need their arrows:** text fields keep Left and Right until the caret reaches an end; sliders keep Left and Right. Up and Down always move on.
 - **Unreachable controls:** upstream marks many controls `tabIndex={-1}` (the nav rail, Settings switches, addon buttons). They're made focusable at runtime, and reverted when the mode is switched off.
@@ -62,6 +62,28 @@ The local UI is its own origin, so it has its own login and settings, separate f
   - **Dropdowns:** a dropdown that opens takes focus, on its chosen option, so Back closes it first.
   - **Text fields:** arriving in one puts the cursor at the end; empty email fields let Left and Right go.
 - **The polyfill's search isn't used:** when its hit test fails (on Settings switches, for example), it measures from the scroll container instead of the control, which skips controls or moves the wrong way. `spatial.ts` replaces it with about 40 lines.
+
+## Player
+
+`src/bigpicture/focus/player.ts` puts a remote on upstream's player without changing `Player.js`. Focus decides the mode:
+
+| Mode | Key | Does |
+|---|---|---|
+| Watching (nothing focused) | Left / Right | Seek, through upstream's own keys |
+| | Up, Down, Enter, Start | Bring up the controls, on Play/Pause |
+| | Back | Leave the player, back on the stream that was playing |
+| Controls (a button focused) | Arrows | Move between the controls |
+| | Enter | Press it; a menu it opens (speed, subtitles, audio) takes focus |
+| | Back | Hide the controls |
+| Menu open | Arrows | Stay in the menu |
+| | Back | Close the menu (its button is pressed again) |
+| Any | Play/Pause media key | Upstream's Space |
+| | Fast-forward / Rewind, Next / Previous keys, gamepad shoulders and triggers | Seek |
+| | Stop media key | Leave the player |
+
+- **Overlay timing:** upstream shows its overlay on mouse movement and hides it after 3 s of stillness. Big Picture sends that movement on every key, and drops focus when the overlay hides, so the next Left or Right seeks again.
+- **Why Back is handled here:** upstream's Escape in the player only exits when it didn't just leave fullscreen, which a TV never does.
+- **Stream switching:** there's no separate quality or stream picker. "Quality" means another stream, and Back lands on the playing stream in the details list, with the others right next to it.
 
 ## Input
 
@@ -182,6 +204,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 3 | 2026-11-02 | TV size and safe margin (`store.ts`, `BigPictureSettings.tsx`, `focus/styles.ts`). Changed `src/App/useInterfaceScale.ts` (TV size multiplies the scale, 4 lines), `src/routes/Settings/Interface/Interface.tsx` (the Big Picture rows; the Escape-fullscreen row hidden in Big Picture) and `src/components/NavBar/HorizontalNavBar/HorizontalNavBar.js` (fullscreen button hidden in Big Picture, 4 lines) |
 | 4 | 2026-11-02 | Every screen: start rules, focus groups, lazy lists, dropdowns and dialogs, details Back (all in `src/bigpicture/focus/`), and `e2e/screens.e2e.ts` with the crawler. No upstream files changed |
 | 5 | 2026-11-02 | Gamepad, remote keys and on-screen keyboard (`src/bigpicture/input/`). Changed `src/App/App.js` (upstream's gamepad reader off in Big Picture, 3 lines) |
+| 6 | 2026-11-02 | Player keys, overlay and menus (`src/bigpicture/focus/player.ts`), polyfill off in Big Picture, `e2e/player.e2e.ts`. No upstream files changed |
 
 ## License
 

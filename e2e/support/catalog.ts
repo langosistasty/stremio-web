@@ -54,11 +54,23 @@ const serveCatalogs = async (context: BrowserContext, delay: CatalogDelay = 0) =
         contentType: 'image/svg+xml',
         body: poster(decodeURIComponent(new URL(route.request().url()).pathname.slice(1, -4))),
     }));
-    await context.route(`${MEDIA_HOST}/**`, (route) => (
-        existsSync(CLIP) ?
-            route.fulfill({ status: 200, contentType: 'video/webm', body: readFileSync(CLIP) }) :
-            route.abort('blockedbyclient')
-    ));
+    // With Range support, so the player can seek.
+    await context.route(`${MEDIA_HOST}/**`, (route) => {
+        if (!existsSync(CLIP)) return route.abort('blockedbyclient');
+        const clip = readFileSync(CLIP);
+        const range = /bytes=(\d*)-(\d*)/.exec(route.request().headers().range ?? '');
+        if (!range) {
+            return route.fulfill({ status: 200, contentType: 'video/webm', headers: { 'Accept-Ranges': 'bytes' }, body: clip });
+        }
+        const start = range[1] ? Number(range[1]) : 0;
+        const end = range[2] ? Math.min(Number(range[2]), clip.length - 1) : clip.length - 1;
+        return route.fulfill({
+            status: 206,
+            contentType: 'video/webm',
+            headers: { 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${clip.length}` },
+            body: clip.subarray(start, end + 1),
+        });
+    });
     await context.route(RESOURCE, async (route) => {
         const [, resource, type, rawId, extra] = new URL(route.request().url()).pathname.match(RESOURCE)!;
         const id = decodeURIComponent(rawId);

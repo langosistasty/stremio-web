@@ -5,6 +5,7 @@
 
 import FocusMemory from './memory';
 import nextInDirection from './spatial';
+import { checkPlayer, playerKey } from './player';
 import { openKeyboard, wantsKeyboard } from '../input/keyboard';
 import {
     currentLayer, focusElement, focusables, inLayer, inRail, isEditable, isFocusable,
@@ -86,6 +87,11 @@ class FocusEngine {
     }
 
     start() {
+        // The bundled spatial-navigation polyfill would also act on arrows that Big Picture
+        // passes on (the player's seek keys); switch it off through its own API meanwhile.
+        const polyfill = (window as { __spatialNavigation__?: { keyMode: string } }).__spatialNavigation__;
+        this.polyfillKeyMode = polyfill?.keyMode ?? null;
+        if (polyfill) polyfill.keyMode = 'NONE';
         window.addEventListener('keydown', this.onKeyDown, true);
         document.addEventListener('focusin', this.onFocusIn, true);
         // Views change, content loads, layers open and close: re-check focus after each batch.
@@ -112,7 +118,11 @@ class FocusEngine {
         this.navigation = navigation;
     }
 
+    private polyfillKeyMode: string | null = null;
+
     private stop() {
+        const polyfill = (window as { __spatialNavigation__?: { keyMode: string } }).__spatialNavigation__;
+        if (polyfill && this.polyfillKeyMode) polyfill.keyMode = this.polyfillKeyMode;
         window.removeEventListener('keydown', this.onKeyDown, true);
         document.removeEventListener('focusin', this.onFocusIn, true);
         document.removeEventListener('focusout', this.onFocusOut, true);
@@ -137,8 +147,12 @@ class FocusEngine {
         if (syntheticEvents.has(event) || event.isComposing || event.ctrlKey || event.altKey || event.metaKey) return;
         // Once the person has pressed something, focus is theirs: never move it for them.
         this.provisional = null;
-        // The player keeps its own keys until Phase 6.
-        if (this.navigation.path.startsWith('/player')) return;
+        // The player has its own TV rules (player.ts); keys it doesn't use go to upstream.
+        if (this.navigation.path.startsWith('/player')) {
+            const actions = { goBack: () => this.goBack(), sendUpstream: (key: string) => this.sendUpstream(key) };
+            if (playerKey(event, topRoute(), actions)) consume(event);
+            return;
+        }
 
         const active = document.activeElement;
         const direction = ARROWS[event.key];
@@ -284,10 +298,30 @@ class FocusEngine {
         }, CLOSE_STEP_MS);
     }
 
+    // A key for upstream's own handlers (the player's), marked so this engine ignores it.
+    private sendUpstream(key: string) {
+        const code = key === ' ' ? 'Space' : key;
+        const keyCode = { ' ': 32, ArrowLeft: 37, ArrowRight: 39 }[key] ?? 0;
+        const init = { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true };
+        const down = new KeyboardEvent('keydown', init);
+        const up = new KeyboardEvent('keyup', init);
+        syntheticEvents.add(down);
+        syntheticEvents.add(up);
+        document.body.dispatchEvent(down);
+        document.body.dispatchEvent(up);
+    }
+
     private check = () => {
         engineStats.checks += 1;
         clearTimeout(this.timer);
         const view = topRoute();
+        // In the player, nothing focused is a normal state (watching); see player.ts.
+        if (this.navigation.path.startsWith('/player')) {
+            this.view = view;
+            this.pending = null;
+            checkPlayer(view);
+            return;
+        }
         if (view !== this.view) {
             this.view = view;
             const restore = this.navigation.type === 'POP' && view !== null && this.memory.has(view, this.navigation.entry, this.place);
