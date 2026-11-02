@@ -43,6 +43,10 @@ const CLOSE_STEP_MS = 150;
 
 const syntheticEvents = new WeakSet<Event>();
 
+// Running totals for the diagnostics heartbeat: a focus fight shows as many checks
+// and engine-made focus changes without key presses.
+const engineStats = { checks: 0, moves: 0, focused: 0 };
+
 const consume = (event: Event) => {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -159,6 +163,7 @@ class FocusEngine {
         if (direction === 'left' && !inRail(active) && (next === null || inRail(next))) {
             next = railEntry(scope) ?? next;
         }
+        engineStats.moves += 1;
         if (next) focusElement(next);
     }
 
@@ -198,6 +203,7 @@ class FocusEngine {
     }
 
     private check = () => {
+        engineStats.checks += 1;
         clearTimeout(this.timer);
         const view = topRoute();
         if (view !== this.view) {
@@ -216,6 +222,7 @@ class FocusEngine {
                 const choice = this.pick(view, { mode: 'initial', since: 0 });
                 if (choice && choice.element !== active) {
                     this.provisional = choice.final ? null : choice.element;
+                    engineStats.focused += 1;
                     focusElement(choice.element);
                 } else if (choice?.final) {
                     this.provisional = null;
@@ -230,6 +237,7 @@ class FocusEngine {
         if (choice) {
             this.pending = null;
             this.provisional = choice.final ? null : choice.element;
+            engineStats.focused += 1;
             focusElement(choice.element);
         } else {
             // Nothing to focus yet; content may still be loading.
@@ -268,4 +276,5 @@ class FocusEngine {
     }
 }
 
+export { engineStats };
 export default FocusEngine;

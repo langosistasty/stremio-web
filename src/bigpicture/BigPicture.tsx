@@ -7,6 +7,9 @@ import { useFullscreen, usePlatform } from 'stremio/common';
 import { useGoBack } from 'stremio/router';
 import { useBigPicture } from './store';
 import { FocusEngine, installStyles, startPromoting } from './focus';
+import startDiagnostics from './diagnostics';
+
+startDiagnostics();
 
 // Rendered once inside FullscreenProvider and the router; draws nothing.
 const BigPicture = () => {

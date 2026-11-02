@@ -47,7 +47,7 @@ ROOT="$STAGE/stremio-bigpicture"
 mkdir -p "$ROOT"
 cp -a "$REPO/build" "$ROOT/ui"
 cp -a "$SAMPLES" "$ROOT/samples"
-cp -a "$REPO/tv/doctor.sh" "$REPO/tv/install.sh" "$REPO/tv/launch.sh" "$REPO/tv/serve.py" "$REPO/tv/probe" "$ROOT/"
+cp -a "$REPO/tv/doctor.sh" "$REPO/tv/install.sh" "$REPO/tv/launch.sh" "$REPO/tv/diagnose.py" "$REPO/tv/serve.py" "$REPO/tv/probe" "$ROOT/"
 cp -a "$REPO/LICENSE.md" "$REPO/BIGPICTURE.md" "$ROOT/"
 printf '%s, source: stremio-web fork, branch big-picture\n' "$COMMIT$DIRTY" > "$ROOT/VERSION"
 

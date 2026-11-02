@@ -89,6 +89,24 @@ The doctor reports the decoder, decode errors, whole-system CPU and NVDEC load. 
 | `--app ID` | Test another Flatpak build, for example `com.stremio.Stremio.Devel` |
 | `--port N` | Use another local UI port |
 
+## Freezes: recording, watchdog, safe rendering
+
+`tv/launch.sh` records every session and keeps the last 5 in `~/.local/state/stremio-bigpicture/`. The last session's report is `last-report.txt` there; `--diagnose` also copies it to `~/stremio-bigpicture-freeze-report.txt`.
+
+- **Heartbeat:** the page (`src/bigpicture/diagnostics.ts`, on with `?diagnostics=1`, which the launcher always sets) posts to the local server every 2 s. Each heartbeat holds the frames drawn, the longest main-thread block, the key presses received, the focused control's kind, the focus engine's activity and the route name, with no titles or ids.
+- **Processes:** `tv/diagnose.py` samples CPU and memory of each Stremio process, and NVIDIA GPU load.
+- **Watchdog:** the launcher restarts Stremio when the page sends no heartbeat for 45 s, or when the picture stays still for 20 s while keys keep arriving. A still picture with no key presses is normal, for example with the screen off. A system suspend resets the clocks. After 3 restarts in 10 minutes it gives up and only records. Turn it off with `--no-watchdog`.
+- **Safe rendering:** on NVIDIA (`/dev/nvidia0`), the launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`, the common workaround for WebKitGTK freezes with NVIDIA's driver. It costs menu smoothness (about 30 instead of 60 frames per second here) but not video, which mpv draws. Use `--no-safe-render` to compare.
+
+A freeze on the TV PC was reported on 2026-11-02 during the Phase 2 test, before any of this existed, so its cause is still unknown. The next report says which layer froze.
+
+| The report says | Meaning |
+|---|---|
+| PAGE STOPPED | The page's JavaScript stopped: the app or this fork's code |
+| DRAWING STOPPED while the page still ran | WebKit or the GPU driver stopped painting; try `--safe-render` |
+| WINDOW NOT FOCUSED | Keys went to another window |
+| FOCUS ENGINE BUSY | The focus engine kept moving focus by itself |
+
 ## Upstream issues found
 
 | Issue | Status |
