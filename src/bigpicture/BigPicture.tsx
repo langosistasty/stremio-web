@@ -1,38 +1,21 @@
-// Stremio Big Picture: the mode's state, readable anywhere, and its global effects.
+// Stremio Big Picture: applies the mode's global effects.
 // SPDX-License-Identifier: GPL-2.0-only
 
-import { useEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useLocation, useNavigationType } from 'react-router';
 import { useFullscreen, usePlatform } from 'stremio/common';
-import { initialEnabled, writeStored } from './flag';
+import { useGoBack } from 'stremio/router';
+import { useBigPicture } from './store';
+import { FocusEngine, installStyles, startPromoting } from './focus';
 
-// A module-level store rather than a context provider, so upstream's provider tree
-// needs no re-indented wrapper and rebases stay small.
-let enabled = initialEnabled();
-const listeners = new Set<() => void>();
-
-const subscribe = (listener: () => void) => {
-    listeners.add(listener);
-    return () => {
-        listeners.delete(listener);
-    };
-};
-
-const setEnabled = (value: boolean) => {
-    enabled = value;
-    writeStored(value);
-    listeners.forEach((listener) => listener());
-};
-
-const useBigPicture = () => ({
-    enabled: useSyncExternalStore(subscribe, () => enabled),
-    setEnabled,
-});
-
-// Rendered once inside FullscreenProvider; draws nothing.
+// Rendered once inside FullscreenProvider and the router; draws nothing.
 const BigPicture = () => {
     const { enabled } = useBigPicture();
     const { shell } = usePlatform();
     const [, requestFullscreen] = useFullscreen();
+    const location = useLocation();
+    const navigationType = useNavigationType();
+    const goBack = useGoBack();
 
     // Styles and later phases key off this attribute; nothing changes while it is absent.
     useEffect(() => {
@@ -51,7 +34,35 @@ const BigPicture = () => {
         }
     }, [enabled, shellReady]);
 
+    const goBackRef = useRef(goBack);
+    goBackRef.current = goBack;
+    const engineRef = useRef<FocusEngine | null>(null);
+    const navigation = { entry: location.key, type: navigationType, path: location.pathname };
+    const navigationRef = useRef(navigation);
+    navigationRef.current = navigation;
+
+    // Before the router's own layout effect swaps the views, so the engine knows
+    // which history entry a new view belongs to.
+    useLayoutEffect(() => {
+        engineRef.current?.setNavigation(navigationRef.current);
+    }, [location, navigationType]);
+
+    useEffect(() => {
+        if (!enabled) return;
+        installStyles();
+        const engine = new FocusEngine(() => goBackRef.current());
+        engine.setNavigation(navigationRef.current);
+        engineRef.current = engine;
+        const stopEngine = engine.start();
+        const stopPromoting = startPromoting();
+        return () => {
+            stopPromoting();
+            stopEngine();
+            engineRef.current = null;
+        };
+    }, [enabled]);
+
     return null;
 };
 
-export { BigPicture, useBigPicture };
+export default BigPicture;

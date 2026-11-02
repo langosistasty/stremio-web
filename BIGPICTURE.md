@@ -25,9 +25,35 @@ When it's on, the page carries `data-bigpicture` on `<html>`, and inside the she
 
 The local UI is its own origin, so it has its own login and settings, separate from Stremio's built-in UI. Keep the port the same: changing it starts from a blank profile.
 
+## Navigation
+
+`src/bigpicture/focus/` takes over the keyboard while Big Picture is on. Upstream's handlers and the spatial-navigation polyfill keep working when it's off.
+
+| Key | What it does |
+|---|---|
+| Arrows | Move to the nearest control in that direction. Left and Right only move along a row, so a row's end is a dead end. Up and Down weigh distance against being out of line, so forms are walked in reading order and grids keep their column |
+| Left, with nothing in line | Enters the nav rail at the current tab, from any row |
+| Enter | Activates the control (upstream behaviour) |
+| Escape, Backspace, BrowserBack | Back: closes the open menu, popup or dialog first, otherwise goes back in history. Home is the floor. Backspace still deletes text in a text field |
+
+- **One key handler:** it runs in the capture phase, before any upstream handler, so a key Big Picture uses never also triggers an upstream shortcut. The player keeps its own keys until Phase 6.
+- **Where arrows stay:** inside an upstream `--spatial-navigation-contain` menu, else the topmost open popup or dialog (react-focus-lock marks them), else the route on screen.
+- **Controls that need their arrows:** text fields keep Left and Right until the caret reaches an end; sliders keep Left and Right. Up and Down always move on.
+- **Unreachable controls:** upstream marks many controls `tabIndex={-1}` (the nav rail, Settings switches, addon buttons). They're made focusable at runtime, and reverted when the mode is switched off.
+- **Initial focus:** a view starts on its main content, not the nav bars: Board, Discover and Library on the first poster, Search on its text field. Catalog views wait up to 1.5 s for posters. If they're late, focus takes a stopgap and moves to the first poster when it arrives, unless a key was pressed in between.
+- **Focus memory:** Back returns to the control that had focus, per history entry. A view that stayed mounted gets the same element back; a view that was rebuilt is matched by link, title and text.
+- **Closing layers:** Back sends the layer an Escape of its own, then an outside click, then presses its close or cancel button, stopping as soon as the layer is gone. In Big Picture, Escape never leaves fullscreen.
+- **Focus ring:** a white outline with a violet glow on the focused control, injected as a global stylesheet scoped to `html[data-bigpicture]`. Phase 3 makes it part of the TV layout.
+- **The polyfill's search isn't used:** when its hit test fails (on Settings switches, for example), it measures from the scroll container instead of the control, which skips controls or moves the wrong way. `spatial.ts` replaces it with about 40 lines.
+
 ## Tests
 
-Keyboard-only Playwright tests live in `e2e/`, with their own `package.json` so the upstream lockfile stays untouched. They run against the production build, offline, at 1920x1080, in WebKit (the shell's engine) and Chromium. A fake shell covers the IPC paths. Any mouse input fails the test.
+Keyboard-only Playwright tests live in `e2e/`, with their own `package.json` so the upstream lockfile stays untouched. They run against the production build at 1920x1080, in WebKit (the shell's engine) and Chromium.
+- **Offline:** the default addons answer from fixtures (`e2e/support/catalog.ts`), with optional delays to simulate a slow network.
+- **Fake shell:** covers the IPC paths.
+- **Keyboard only:** any mouse input fails the test.
+- **WebKit as on the TV:** the WebKit project uses a WebKitGTK-on-Linux user agent, because upstream behaves differently there; for example, it turns off view transitions.
+- **Workers:** 4 by default, since each is a full browser; set `E2E_WORKERS` to change it.
 
 ```bash
 e2e/run.sh              # build, then test
@@ -63,6 +89,13 @@ The doctor reports the decoder, decode errors, whole-system CPU and NVDEC load. 
 | `--app ID` | Test another Flatpak build, for example `com.stremio.Stremio.Devel` |
 | `--port N` | Use another local UI port |
 
+## Upstream issues found
+
+| Issue | Status |
+|---|---|
+| Library redirects `/library` to its default filter with a push instead of a replace, so Back (upstream's Backspace shortcut too) lands on `/library` and is sent forward again | Fixed here, 1 line; worth sending upstream |
+| `Routes.tsx` applies a push inside `startViewTransition`, with the location captured. If Back happens before the transition callback runs, the stale callback puts the old view back on screen while the URL says otherwise | Not fixed: upstream turns view transitions off on Linux WebKit, so the TV never takes this path |
+
 ## Known fragile point
 
 The streaming server only accepts cross-origin requests from Stremio's own domains, and its `/proxy` route rejects `http://` targets. A local UI works because the shell always sets `NO_CORS`, and the server treats the value `"0"` as true. If upstream fixes that, the doctor's "Page can reach the streaming server" check fails. The fallback is to serve the UI and the server from one origin.
@@ -75,6 +108,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 |---|---|---|
 | 0 | 2026-11-02 | Added `tv/` and this file. No upstream files changed |
 | 1 | 2026-11-02 | Added `src/bigpicture/`, `e2e/` and `tv/launch.sh`. Changed `src/App/App.js` (renders `<BigPicture />`, 3 lines) and `src/routes/Settings/Interface/Interface.tsx` (the switch, 5 lines) |
+| 2 | 2026-11-02 | Added `src/bigpicture/focus/`. Changed `src/common/Fullscreen/FullscreenProvider.tsx` (Escape doesn't leave fullscreen in Big Picture, 2 lines) and `src/routes/Library/Library.js` (the redirect replaces its history entry, 1 line plus a comment) |
 
 ## License
 

@@ -11,6 +11,9 @@ export default defineConfig({
     testDir: '.',
     testMatch: '**/*.e2e.ts',
     fullyParallel: true,
+    // Each worker is a full browser running the app; more than this can exhaust the
+    // memory of a laptop that is also running a desktop.
+    workers: Number(process.env.E2E_WORKERS ?? 4),
     forbidOnly: !!process.env.CI,
     reporter: [['list']],
     use: {
@@ -20,7 +23,15 @@ export default defineConfig({
     },
     projects: [
         // WebKit is the engine inside the Linux shell, so it is the one that matters most.
-        { name: 'webkit', use: { browserName: 'webkit' } },
+        // Playwright's WebKit calls itself Safari on macOS; the shell's WebKitGTK says Linux,
+        // and upstream behaves differently there (no view transitions, for one).
+        {
+            name: 'webkit',
+            use: {
+                browserName: 'webkit',
+                userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15',
+            },
+        },
         { name: 'chromium', use: { browserName: 'chromium' } },
     ],
     // The production build, served the way the TV serves it.

@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Toggle } from 'stremio/components';
-import { useBigPicture } from './BigPicture';
+import { useBigPicture } from './store';
 
 // Focusable in every mode, so the keyboard can turn Big Picture on in the first place.
 const BigPictureToggle = () => {

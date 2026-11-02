@@ -7,6 +7,8 @@ import useShortcut from '../Shortcuts/useShortcut';
 import useSettings from '../useSettings';
 import FullscreenContext, { type FullscreenContextValue } from './FullscreenContext';
 import { usePlatform } from '../Platform';
+// Big Picture (fork change, 2026-11-02): Escape means Back on a TV, see BIGPICTURE.md.
+import { isBigPictureEnabled } from 'stremio/bigpicture/store';
 
 type Props = {
     children: React.ReactNode,
@@ -83,7 +85,7 @@ const FullscreenProvider = ({ children }: Props) => {
         const onKeyDown = (event: KeyboardEvent) => {
             const keyboardKey = getKeyboardShortcutKey(event);
 
-            if (keyboardKey === 'Escape' && escExitFullscreen) {
+            if (keyboardKey === 'Escape' && escExitFullscreen && !isBigPictureEnabled()) {
                 exitFullscreen();
             }
 

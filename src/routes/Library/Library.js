@@ -67,7 +67,9 @@ const Library = ({ model }) => {
     }, [profile.auth, library.selected]);
     React.useEffect(() => {
         if (!library.selected?.type && typeSelect.value) {
-            navigate(toPath(typeSelect.value));
+            // Fork change (Big Picture, 2026-11-02): a redirect replaces its entry, so Back
+            // leaves Library instead of landing on /library and being sent here again.
+            navigate(toPath(typeSelect.value), { replace: true });
         }
     }, [typeSelect.value, library.selected]);
     return (
