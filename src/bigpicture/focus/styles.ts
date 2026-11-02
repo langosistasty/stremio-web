@@ -23,6 +23,45 @@ html[data-bigpicture] :is(a[href], button, input, select, textarea, [tabindex]) 
     scroll-margin: 4rem 3rem;
 }
 
+/* On-screen keyboard: a panel along the bottom, above everything. */
+#bigpicture-keyboard {
+    position: fixed;
+    left: 50%;
+    bottom: 2rem;
+    z-index: 1000;
+    transform: translateX(-50%);
+    padding: 1.5rem;
+    border-radius: 1.5rem;
+    background: var(--modal-background-color, #0f0d20);
+    box-shadow: 0 0 3rem rgba(0, 0, 0, 0.8);
+    overflow: visible;
+}
+#bigpicture-keyboard .bigpicture-keyboard-preview {
+    min-height: 3rem;
+    margin-bottom: 1rem;
+    padding: 0.5rem 1rem;
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 1.6rem;
+    white-space: pre;
+}
+#bigpicture-keyboard .bigpicture-keyboard-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    overflow: visible;
+}
+#bigpicture-keyboard button {
+    flex: 1 0 3.5rem;
+    height: 3.5rem;
+    padding: 0 1rem;
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 1.4rem;
+    color: inherit;
+    white-space: nowrap;
+}
+
 /* TV safe margin (overscan), as a share of the screen, set by BigPicture.tsx.
    The viewport variables are upstream's, already divided by the interface scale. */
 html[data-bigpicture] body {

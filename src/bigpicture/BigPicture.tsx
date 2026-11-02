@@ -8,6 +8,8 @@ import { useGoBack } from 'stremio/router';
 import { useBigPictureLayout } from './store';
 import { FocusEngine, installStyles, startPromoting } from './focus';
 import startDiagnostics from './diagnostics';
+import startGamepads from './input/gamepad';
+import { startKeyboardTracking } from './input/keyboard';
 
 startDiagnostics();
 
@@ -65,7 +67,11 @@ const BigPicture = () => {
         engineRef.current = engine;
         const stopEngine = engine.start();
         const stopPromoting = startPromoting();
+        const stopGamepads = startGamepads();
+        const stopKeyboard = startKeyboardTracking();
         return () => {
+            stopKeyboard();
+            stopGamepads();
             stopPromoting();
             stopEngine();
             engineRef.current = null;

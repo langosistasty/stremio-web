@@ -3,7 +3,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 
 // An open popup or dialog: react-focus-lock marks each active lock, and ActionMenu renders a menu role.
-const LAYER = '[data-focus-lock-disabled="false"], [role="menu"]';
+// Big Picture's own layers (the on-screen keyboard) carry data-bigpicture-layer.
+const LAYER = '[data-focus-lock-disabled="false"], [role="menu"], [data-bigpicture-layer]';
 const CANDIDATE = 'a[href], button, input, select, textarea, [tabindex]';
 const TEXT_INPUT_TYPES = new Set(['text', 'search', 'email', 'password', 'tel', 'url', 'number']);
 
@@ -207,6 +208,7 @@ export {
     inRail,
     isEditable,
     isFocusable,
+    isTextInput,
     keepsArrow,
     navigationScope,
     openLayer,

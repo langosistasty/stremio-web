@@ -63,6 +63,29 @@ The local UI is its own origin, so it has its own login and settings, separate f
   - **Text fields:** arriving in one puts the cursor at the end; empty email fields let Left and Right go.
 - **The polyfill's search isn't used:** when its hit test fails (on Settings switches, for example), it measures from the scroll container instead of the control, which skips controls or moves the wrong way. `spatial.ts` replaces it with about 40 lines.
 
+## Input
+
+**Gamepad** (`src/bigpicture/input/gamepad.ts`): any pad with the standard mapping (Xbox, PlayStation, and most others through the browser), polled every 16 ms. Upstream's own gamepad support, which reads only buttons 0–5 and the sticks, is switched off while Big Picture is on, so each press acts once.
+
+| Button | Acts as |
+|---|---|
+| D-pad, left stick | Arrows (held: repeats after 400 ms, every 120 ms) |
+| A / Cross | Enter |
+| B / Circle, Back / Select | Back |
+| LB, LT / RB, RT | Page Up / Page Down (3 rows) |
+| Y / Triangle | Search |
+| Start / Options | Context menu key (reserved for the player) |
+| Guide / PS | Home |
+
+**Remote keys:** Page Up/Down jump 3 rows. Browser Home and Browser Search keys (found on many remotes and air mice) go to Board and Search.
+
+**On-screen keyboard** (`src/bigpicture/input/keyboard.ts`):
+- **Opening:** Enter or A on a text field opens it, unless that field was typed into on a real keyboard since it was focused; then Enter keeps its usual meaning (submit).
+- **Layout:** digits, letters and `@ . - _`, plus Shift, Space, Delete, Clear and Done, with a preview line (masked for passwords).
+- **Done:** closes the keyboard; in the search field it also searches.
+- **Back:** closes it, with focus back on the field.
+- **How it fits in:** it's a plain DOM layer outside React, marked `data-bigpicture-layer`, so the focus engine's arrows and Back work on it unchanged. Values go in through the field's native setter and an `input` event, the way React-controlled fields accept them.
+
 ## TV layout
 
 | Setting (Settings > Interface, shown while Big Picture is on) | Default | Effect |
@@ -158,6 +181,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 2 | 2026-11-02 | Added `src/bigpicture/focus/`. Changed `src/common/Fullscreen/FullscreenProvider.tsx` (Escape doesn't leave fullscreen in Big Picture, 2 lines) and `src/routes/Library/Library.js` (the redirect replaces its history entry, 1 line plus a comment) |
 | 3 | 2026-11-02 | TV size and safe margin (`store.ts`, `BigPictureSettings.tsx`, `focus/styles.ts`). Changed `src/App/useInterfaceScale.ts` (TV size multiplies the scale, 4 lines), `src/routes/Settings/Interface/Interface.tsx` (the Big Picture rows; the Escape-fullscreen row hidden in Big Picture) and `src/components/NavBar/HorizontalNavBar/HorizontalNavBar.js` (fullscreen button hidden in Big Picture, 4 lines) |
 | 4 | 2026-11-02 | Every screen: start rules, focus groups, lazy lists, dropdowns and dialogs, details Back (all in `src/bigpicture/focus/`), and `e2e/screens.e2e.ts` with the crawler. No upstream files changed |
+| 5 | 2026-11-02 | Gamepad, remote keys and on-screen keyboard (`src/bigpicture/input/`). Changed `src/App/App.js` (upstream's gamepad reader off in Big Picture, 3 lines) |
 
 ## License
 

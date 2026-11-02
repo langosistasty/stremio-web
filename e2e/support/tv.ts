@@ -12,6 +12,8 @@ type Options = {
     shell: boolean,
     // Delay catalog responses (milliseconds, for all or per "type/id"), like a slow network.
     catalogDelay: CatalogDelay,
+    // Connect a fake standard-mapping gamepad (remote.pad drives it).
+    gamepad: boolean,
 };
 
 type Remote = {
@@ -31,13 +33,24 @@ type Remote = {
     // Press `key` until `target` has focus; fails after `limit` presses.
     focusBy: (key: string, target: Locator, limit?: number) => Promise<void>,
     shellMessages: () => Promise<ShellMessage[]>,
+    // Press a gamepad button (standard mapping number) for holdMs, or tilt the left stick.
+    pad: (button: number | 'stick-left' | 'stick-right' | 'stick-up' | 'stick-down', holdMs?: number) => Promise<void>,
 };
 
 // Runs in the page before any app code. Counts real pointer input, so a test that
 // touches the mouse fails, and optionally installs a fake shell that behaves like
 // stremio-linux-shell: answers the handshake and echoes fullscreen changes.
-const pageSetup = ({ shell }: { shell: boolean }) => {
+const pageSetup = ({ shell, gamepad }: { shell: boolean, gamepad: boolean }) => {
     const w = window as any;
+    if (gamepad) {
+        const pad = {
+            id: 'Test pad (STANDARD GAMEPAD)', index: 0, connected: true, mapping: 'standard', timestamp: 0,
+            buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })),
+            axes: [0, 0, 0, 0],
+        };
+        w.__pad = pad;
+        Object.defineProperty(navigator, 'getGamepads', { value: () => [pad, null, null, null], configurable: true });
+    }
     w.__pointerInput = [];
     ['pointerdown', 'mousedown', 'wheel', 'touchstart'].forEach((type) => {
         window.addEventListener(type, (event) => {
@@ -74,7 +87,8 @@ const pageSetup = ({ shell }: { shell: boolean }) => {
 const test = base.extend<Options & { remote: Remote }>({
     shell: [false, { option: true }],
     catalogDelay: [0, { option: true }],
-    remote: async ({ page, context, baseURL, shell, catalogDelay }, use) => {
+    gamepad: [false, { option: true }],
+    remote: async ({ page, context, baseURL, shell, catalogDelay, gamepad }, use) => {
         // Offline: only the app's own files load. The Stremio API and the streaming
         // server are unreachable; the default addons answer from fixtures.
         await context.route('**/*', (route) => (
@@ -82,7 +96,7 @@ const test = base.extend<Options & { remote: Remote }>({
         ));
         // Registered later, so it takes precedence: the default addons answer from fixtures.
         await serveCatalogs(context, catalogDelay);
-        await page.addInitScript(pageSetup, { shell });
+        await page.addInitScript(pageSetup, { shell, gamepad });
 
         const focused = () => page.locator(':focus');
         const remote: Remote = {
@@ -130,6 +144,25 @@ const test = base.extend<Options & { remote: Remote }>({
                 throw new Error(`${key} did not reach the target within ${limit} presses`);
             },
             shellMessages: () => page.evaluate(() => (window as any).__shellMessages ?? []),
+            pad: async (button, holdMs = 80) => {
+                const set = (down: boolean) => page.evaluate(([button, down]) => {
+                    const pad = (window as any).__pad;
+                    const axes: Record<string, [number, number]> = {
+                        'stick-left': [0, -1], 'stick-right': [0, 1], 'stick-up': [1, -1], 'stick-down': [1, 1],
+                    };
+                    if (typeof button === 'number') {
+                        pad.buttons[button] = { pressed: down, touched: down, value: down ? 1 : 0 };
+                    } else {
+                        const [axis, value] = axes[button];
+                        pad.axes[axis] = down ? value : 0;
+                    }
+                }, [button, down] as const);
+                await set(true);
+                await page.waitForTimeout(holdMs);
+                await set(false);
+                // Let the poller see the release before the next press.
+                await page.waitForTimeout(50);
+            },
         };
 
         await use(remote);

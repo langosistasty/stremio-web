@@ -17,7 +17,7 @@ const { default: ShortcutsModal } = require('./ShortcutsModal');
 const { default: GamepadModal } = require('./GamepadModal');
 const { default: useInterfaceScale } = require('./useInterfaceScale');
 // Big Picture (fork change, 2026-11-02): 10-foot TV mode, see BIGPICTURE.md.
-const { BigPicture } = require('stremio/bigpicture');
+const { BigPicture, useBigPicture } = require('stremio/bigpicture');
 const styles = require('./styles');
 
 const ProtectedRoutes = withCoreSuspender(Routes);
@@ -35,6 +35,8 @@ const App = () => {
     const locationPath = createPath(location);
     const previousPathRef = React.useRef(locationPath);
     const [gamepadSupportEnabled, setGamepadSupportEnabled] = React.useState(false);
+    // Big Picture reads gamepads itself; upstream's reader stays off then, so no press counts twice.
+    const bigPicture = useBigPicture();
     const services = React.useMemo(() => {
         return {
             chromecast: new Chromecast(),
@@ -161,7 +163,7 @@ const App = () => {
         <ServicesProvider services={services}>
             <ToastProvider className={styles['toasts-container']}>
                 <TooltipProvider className={styles['tooltip-container']}>
-                    <GamepadProvider enabled={gamepadSupportEnabled} onGuide={toggleGamepadModal}>
+                    <GamepadProvider enabled={gamepadSupportEnabled && !bigPicture.enabled} onGuide={toggleGamepadModal}>
                         <ShortcutsProvider onShortcut={onShortcut}>
                             <FullscreenProvider>
                                 <DiscordProvider>

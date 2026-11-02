@@ -5,9 +5,10 @@
 
 import FocusMemory from './memory';
 import nextInDirection from './spatial';
+import { openKeyboard, wantsKeyboard } from '../input/keyboard';
 import {
     currentLayer, focusElement, focusables, inLayer, inRail, isEditable, isFocusable,
-    focusGroup, keepsArrow, navigationScope, openLayer, openedMenu, railEntry, railOf, scrollFurther, topRoute, type Direction,
+    focusGroup, isTextInput, keepsArrow, navigationScope, openLayer, openedMenu, railEntry, railOf, scrollFurther, topRoute, type Direction,
 } from './dom';
 
 type Navigation = {
@@ -52,6 +53,7 @@ const CLOSE_BUTTON = '[class*="close-button"], [class*="cancel-button"]';
 const CLOSE_STEP_MS = 150;
 const SCROLL_RETRY_MS = 250;
 const MENU_OPEN_MS = 120;
+const PAGE_STEPS = 3;
 
 const syntheticEvents = new WeakSet<Event>();
 
@@ -144,6 +146,31 @@ class FocusEngine {
             if (keepsArrow(active, direction)) return;
             consume(event);
             this.move(direction);
+            return;
+        }
+
+        // Enter on a text field opens the on-screen keyboard, unless it was typed into.
+        if (event.key === 'Enter' && isTextInput(active) && wantsKeyboard(active)) {
+            consume(event);
+            openKeyboard(active);
+            return;
+        }
+
+        // Remote and gamepad keys: jump a few rows, or go Home or to Search.
+        if (event.key === 'PageUp' || event.key === 'PageDown') {
+            if (isEditable(active)) return;
+            consume(event);
+            for (let step = 0; step < PAGE_STEPS; step += 1) this.move(event.key === 'PageUp' ? 'up' : 'down', false);
+            return;
+        }
+        if (event.key === 'BrowserHome' || event.key === 'GoHome') {
+            consume(event);
+            if (this.navigation.path !== '/') this.navigate('/', { replace: false });
+            return;
+        }
+        if (event.key === 'BrowserSearch') {
+            consume(event);
+            if (!this.navigation.path.startsWith('/search')) this.navigate('/search', { replace: false });
             return;
         }
 
