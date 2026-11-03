@@ -37,6 +37,8 @@ if [ "$SOURCE" != "$TARGET" ]; then
     rm -rf "$TARGET/ui"
     cp -a "$SOURCE/." "$TARGET/"
 fi
+# Copies through a FAT-formatted USB stick lose the executable bits.
+chmod +x "$TARGET"/*.sh "$TARGET"/*.py
 echo "Installed to $TARGET"
 
 if ! command -v flatpak >/dev/null 2>&1; then
