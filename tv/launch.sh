@@ -14,7 +14,8 @@ APP_ID="com.stremio.Stremio"
 PORT=18470
 BIG_PICTURE=1
 DIAGNOSE=0
-SAFE_RENDER=auto
+RENDER=auto
+SOAK=0
 WATCHDOG=1
 FREEZE_REPORT="$HOME/stremio-bigpicture-freeze-report.txt"
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/stremio-bigpicture"
@@ -28,8 +29,16 @@ usage() {
 Usage: launch.sh [options]
   --normal          Use the saved setting instead of forcing Big Picture on
   --diagnose        Also write ~/stremio-bigpicture-freeze-report.txt on exit
-  --safe-render     Turn off WebKit's DMA-BUF renderer (default on NVIDIA, where it can freeze)
-  --no-safe-render  Keep WebKit's DMA-BUF renderer, even on NVIDIA
+  --render MODE     How Stremio draws the interface (default: auto). Modes:
+                      wayland        WebKit's DMA-BUF renderer on Wayland (auto, except on NVIDIA)
+                      wayland-safe   DMA-BUF renderer off (--safe-render)
+                      wayland-vulkan DMA-BUF renderer off, GTK's Vulkan renderer
+                      wayland-cpu    WebKit's GPU compositing off; pages are painted by the CPU
+                      x11            Through XWayland, DMA-BUF renderer on
+                      x11-safe       Through XWayland, DMA-BUF renderer off
+  --safe-render     Same as --render wayland-safe
+  --no-safe-render  Same as --render wayland
+  --soak            Let the page browse by itself, to test a renderer for freezes unattended
   --no-watchdog     Never restart Stremio when it freezes
   --analyze DIR     Print the report for an earlier recording
   --app ID          Flatpak app to run (default: $APP_ID)
@@ -53,8 +62,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --normal) BIG_PICTURE=0 ;;
         --diagnose) DIAGNOSE=1 ;;
-        --safe-render) SAFE_RENDER=1 ;;
-        --no-safe-render) SAFE_RENDER=0 ;;
+        --render) RENDER="${2:-}"; shift ;;
+        --safe-render) RENDER=wayland-safe ;;
+        --no-safe-render) RENDER=wayland ;;
+        --soak) SOAK=1 ;;
         --no-watchdog) WATCHDOG=0 ;;
         --analyze) python3 -I "$SELF_DIR/diagnose.py" analyze "$2" | sanitize; exit "${PIPESTATUS[0]}" ;;
         --app) APP_ID="$2"; shift ;;
@@ -116,23 +127,36 @@ if port_open "$PORT"; then
     fi
 fi
 
-if [ "$SAFE_RENDER" = auto ]; then
-    SAFE_RENDER=0
-    [ -e /dev/nvidia0 ] && SAFE_RENDER=1
+if [ "$RENDER" = auto ]; then
+    RENDER=wayland
+    [ -e /dev/nvidia0 ] && RENDER=wayland-safe
 fi
+# Flatpak options per mode. Stremio's own start script forces GTK's OpenGL renderer on
+# NVIDIA, so the Vulkan mode starts the shell binary directly.
+NO_DMABUF=--env=WEBKIT_DISABLE_DMABUF_RENDERER=1
+X11=(--socket=x11 --env=GDK_BACKEND=x11)
+case "$RENDER" in
+    wayland) RENDER_ARGS=() ;;
+    wayland-safe) RENDER_ARGS=("$NO_DMABUF") ;;
+    wayland-vulkan) RENDER_ARGS=("$NO_DMABUF" --env=GSK_RENDERER=vulkan --command=/app/libexec/stremio/stremio) ;;
+    wayland-cpu) RENDER_ARGS=(--env=WEBKIT_DISABLE_COMPOSITING_MODE=1) ;;
+    x11) RENDER_ARGS=("${X11[@]}") ;;
+    x11-safe) RENDER_ARGS=("${X11[@]}" "$NO_DMABUF") ;;
+    *) echo "Unknown render mode: $RENDER" >&2; usage >&2; exit 64 ;;
+esac
 
 # A new recording per session; older ones beyond the last few are removed.
 mkdir -p "$STATE_DIR"
 RECORDING="$STATE_DIR/session-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$RECORDING"
 find "$STATE_DIR" -maxdepth 1 -type d -name 'session-*' | sort | head -n -"$KEEP_RECORDINGS" | xargs -r rm -rf
-echo "bigpicture=$BIG_PICTURE safe-render=$SAFE_RENDER watchdog=$WATCHDOG bundle=$(cut -d, -f1 "$SELF_DIR/VERSION" 2>/dev/null)" > "$RECORDING/options"
+echo "bigpicture=$BIG_PICTURE render=$RENDER soak=$SOAK watchdog=$WATCHDOG bundle=$(cut -d, -f1 "$SELF_DIR/VERSION" 2>/dev/null)" > "$RECORDING/options"
 
 QUERY=("diagnostics=1")
+[ "$SOAK" = 1 ] && QUERY+=("soak=1")
 [ "$BIG_PICTURE" = 1 ] && QUERY=("bigpicture=1" "${QUERY[@]}")
 URL="http://127.0.0.1:$PORT/?$(IFS='&'; echo "${QUERY[*]}")"
-APP_ARGS=(--env=RUST_LOG=info)
-[ "$SAFE_RENDER" = 1 ] && APP_ARGS+=(--env=WEBKIT_DISABLE_DMABUF_RENDERER=1)
+APP_ARGS=(--env=RUST_LOG=info "${RENDER_ARGS[@]}")
 
 SERVER_PID=""
 SAMPLER_PID=""

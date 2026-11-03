@@ -5,6 +5,7 @@
 import type { BrowserContext, Route } from '@playwright/test';
 
 import { readFileSync, existsSync } from 'node:fs';
+import { calendarVideos, libraryMeta } from './account';
 import { join } from 'node:path';
 
 const ITEMS_PER_CATALOG = 12;
@@ -85,6 +86,8 @@ const serveCatalogs = async (context: BrowserContext, delay: CatalogDelay = 0) =
                         metas: [1, 2, 3].map((n) => meta(type, itemId(type, `${id}-${search}`, n - 1), `${type} ${search} ${n}`)),
                     });
                 }
+                const calendar = extra && calendarVideos(extra);
+                if (calendar) return json(route, calendar);
                 if (extra) return json(route, { metas: [] });
                 return json(route, {
                     metas: Array.from({ length: ITEMS_PER_CATALOG }, (_, index) => (
@@ -93,7 +96,7 @@ const serveCatalogs = async (context: BrowserContext, delay: CatalogDelay = 0) =
                 });
             }
             case 'meta':
-                return json(route, { meta: meta(type, id, id.replace(/^tt/, '').replace(/-/g, ' ')) });
+                return json(route, { meta: libraryMeta(id) ?? meta(type, id, id.replace(/^tt/, '').replace(/-/g, ' ')) });
             case 'stream':
                 return json(route, { streams: new URL(route.request().url()).hostname === STREAM_HOST ? streams() : [] });
             default:
@@ -103,4 +106,4 @@ const serveCatalogs = async (context: BrowserContext, delay: CatalogDelay = 0) =
 };
 
 export type { CatalogDelay };
-export { serveCatalogs, title };
+export { POSTER_HOST, serveCatalogs, title };

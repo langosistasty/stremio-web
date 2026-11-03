@@ -8,10 +8,12 @@ import { useGoBack } from 'stremio/router';
 import { useBigPictureLayout } from './store';
 import { FocusEngine, installStyles, startPromoting } from './focus';
 import startDiagnostics from './diagnostics';
+import startSoak from './soak';
 import startGamepads from './input/gamepad';
 import { startKeyboardTracking } from './input/keyboard';
 
 startDiagnostics();
+startSoak();
 
 // Rendered once inside FullscreenProvider and the router; draws nothing.
 const BigPicture = () => {

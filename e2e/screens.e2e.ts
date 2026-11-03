@@ -129,3 +129,50 @@ test.describe('screen by screen', () => {
         await expect(email).toHaveValue('tv@example.com');
     });
 });
+
+// With a fake account (support/account.ts): a library of series and movies, some half
+// watched, with episodes over the months around today.
+test.describe('signed in', () => {
+    test.use({ account: true });
+
+    const SIGNED_IN: { route: string, start: RegExp }[] = [
+        { route: '/library', start: /library/ },
+        { route: '/continuewatching', start: /library/ },
+        { route: '/calendar', start: /\S/ },
+    ];
+    for (const { route, start } of SIGNED_IN) {
+        test(`${route} starts in the right place, and every control is reachable`, async ({ remote }) => {
+            // Calendar has a control per day and per episode: crawling it takes minutes.
+            test.setTimeout(360000);
+            await remote.open(route, BIG_PICTURE);
+            await expect(remote.focused()).toHaveCount(1, { timeout: 8000 });
+            await remote.page.waitForTimeout(1600);
+            expect(await describeFocus(remote)).toMatch(start);
+            const result = await crawl(remote, { limit: 250 });
+            expect(result.unreachable, `reached ${result.reached} of ${result.total}`).toEqual([]);
+        });
+    }
+
+    test('Calendar: earlier months open from the remote, and their days are reachable', async ({ remote }) => {
+        await remote.open('/calendar', BIG_PICTURE);
+        const prev = remote.view().locator('[class*="prev"]').first();
+        // Calendar starts on its month selector.
+        await expect(prev).toBeFocused({ timeout: 8000 });
+        let url = remote.page.url();
+        for (let month = 0; month < 3; month += 1) {
+            await remote.press('Enter');
+            await expect(remote.page).not.toHaveURL(url);
+            url = remote.page.url();
+            await expect(prev).toBeFocused();
+            await remote.press('ArrowDown');
+            await expect(remote.focused()).toHaveAttribute('class', /cell/);
+            await remote.press('ArrowRight');
+            await remote.press('ArrowDown');
+            await expect(remote.focused()).toHaveAttribute('class', /cell/);
+            await remote.press('ArrowUp');
+            await remote.press('ArrowLeft');
+            await remote.press('ArrowUp');
+            await expect(prev).toBeFocused();
+        }
+    });
+});

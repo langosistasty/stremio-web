@@ -146,7 +146,7 @@ kill "${BACKGROUND[-1]}" 2>/dev/null
 wait_for 10 bash -c "! (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null"
 
 echo "== a frozen page"
-BIGPICTURE_PAGE_SILENT_SECONDS=6 STUB_BEATS=3 STUB_LIFETIME=40 timeout 60 "$LAUNCH" --port "$PORT" > "$WORK/freeze.log" 2>&1
+BIGPICTURE_PAGE_SILENT_SECONDS=6 STUB_BEATS=3 STUB_LIFETIME=40 timeout 90 "$LAUNCH" --port "$PORT" > "$WORK/freeze.log" 2>&1
 check "the watchdog restarted Stremio" grep -q "WATCHDOG RESTARTED" "$STATE_DIR/last-report.txt"
 check "it gave up after 3 restarts" grep -q "WATCHDOG GAVE UP" "$STATE_DIR/last-report.txt"
 

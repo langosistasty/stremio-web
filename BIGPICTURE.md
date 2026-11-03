@@ -123,7 +123,8 @@ The local UI is its own origin, so it has its own login and settings, separate f
 
 Keyboard-only Playwright tests live in `e2e/`, with their own `package.json` so the upstream lockfile stays untouched. They run against the production build at 1920x1080, in WebKit (the shell's engine) and Chromium.
 - **Offline:** the default addons answer from fixtures (`e2e/support/catalog.ts`): catalogs, search results, metadata, three streams per title (WatchHub), and posters. Optional delays simulate a slow network. Streams point to a WebM clip that `run.sh` generates with ffmpeg into `e2e/fixtures/` (not in git).
-- **Every screen is crawled:** `e2e/support/crawl.ts` follows every arrow move from a screen's start and fails if any visible control can't be reached. Library, Continue Watching and Calendar need an account, which can't be faked offline, so they're covered in their logged-out state.
+- **Every screen is crawled:** `e2e/support/crawl.ts` follows every arrow move from a screen's start and fails if any visible control can't be reached.
+- **A fake account:** `e2e/support/account.ts` answers the Stremio API, so tests with `account: true` log in (through the same core action as Intro's form) to a library of 30 series and 20 movies, 8 of them half watched, with weekly episodes over the months around today. Library, Continue Watching and Calendar are crawled signed in, and Calendar's earlier months are opened from the remote.
 - **Fake shell:** covers the IPC paths.
 - **Keyboard only:** any mouse input fails the test.
 - **WebKit as on the TV:** the WebKit project uses a WebKitGTK-on-Linux user agent, because upstream behaves differently there; for example, it turns off view transitions.
@@ -186,9 +187,14 @@ The doctor reports the decoder, decode errors, whole-system CPU and NVDEC load. 
 - **Heartbeat:** the page (`src/bigpicture/diagnostics.ts`, on with `?diagnostics=1`, which the launcher always sets) posts to the local server every 2 s. Each heartbeat holds the frames drawn, the longest main-thread block, the key presses received, the focused control's kind, the focus engine's activity and the route name, with no titles or ids.
 - **Processes:** `tv/diagnose.py` samples CPU and memory of each Stremio process, and NVIDIA GPU load.
 - **Watchdog:** the launcher restarts Stremio when the page sends no heartbeat for 45 s, or when the picture stays still for 20 s while keys keep arriving. A still picture with no key presses is normal, for example with the screen off. A system suspend resets the clocks. After 3 restarts in 10 minutes it gives up and only records. Turn it off with `--no-watchdog`.
-- **Safe rendering:** on NVIDIA (`/dev/nvidia0`), the launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`, the common workaround for WebKitGTK freezes with NVIDIA's driver. It costs menu smoothness (about 30 instead of 60 frames per second here) but not video, which mpv draws. Use `--no-safe-render` to compare.
+- **Safe rendering:** on NVIDIA (`/dev/nvidia0`), the launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`, the common workaround for WebKitGTK freezes with NVIDIA's driver. It costs menu smoothness (about 30 instead of 60 frames per second) but not video, which mpv draws.
+- **Render modes:** `--render MODE` picks how Stremio draws: `wayland`, `wayland-safe` (the NVIDIA default), `wayland-vulkan` (GTK's Vulkan renderer; Stremio's own start script forces OpenGL on NVIDIA, so this starts the shell binary directly), `wayland-cpu` (no GPU compositing), `x11` and `x11-safe` (through XWayland). `--safe-render` and `--no-safe-render` are `wayland-safe` and `wayland`.
+- **Soak test:** `--soak` makes the page browse by itself (`src/bigpicture/soak.ts`): it visits Board, Discover, Library, Calendar, Search and Settings and moves around each with arrow keys, so a render mode can be tested for freezes with no one at the remote. The screen must be on: a hidden page draws nothing.
 
-A freeze on the TV PC was reported on 2026-11-02 during the Phase 2 test, before any of this existed, so its cause is still unknown. The next report says which layer froze.
+**First test on the TV PC (2026-11-03, GTX 1050, driver 580.196.07, KDE Wayland):**
+- `wayland-safe`, the default: black boxes flash across the menus. No freeze in 3.5 minutes.
+- `wayland`: no black boxes, but two freezes in 5 minutes, one on Calendar and one on Board with no key pressed. Both times drawing stopped first (frames fell to 17, then 0, while the page's JavaScript still ran), and a few seconds later WebKit's process ran at 100% CPU. The watchdog restarted Stremio both times. That's the WebKit DMA-BUF freeze on NVIDIA, so this fork's code isn't the cause.
+- Still to test with `--soak`: `x11`, `x11-safe`, `wayland-vulkan` and `wayland-cpu`. The default stays `wayland-safe` until one of them shows neither problem.
 
 | The report says | Meaning |
 |---|---|
@@ -203,6 +209,10 @@ A freeze on the TV PC was reported on 2026-11-02 during the Phase 2 test, before
 |---|---|
 | Library redirects `/library` to its default filter with a push instead of a replace, so Back (upstream's Backspace shortcut too) lands on `/library` and is sent forward again | Fixed here, 1 line; worth sending upstream |
 | `Routes.tsx` applies a push inside `startViewTransition`, with the location captured. If Back happens before the transition callback runs, the stale callback puts the old view back on screen while the URL says otherwise | Not fixed: upstream turns view transitions off on Linux WebKit, so the TV never takes this path |
+
+## Known navigation quirk
+
+On Calendar, Up from a day in the right-hand columns skips the month arrows and lands on the search bar, which lines up better with those columns. Everything stays reachable (the crawl checks that), but the month arrows are reached from the left-hand columns.
 
 ## Known fragile point
 
@@ -224,6 +234,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 5 | 2026-11-02 | Gamepad, remote keys and on-screen keyboard (`src/bigpicture/input/`). Changed `src/App/App.js` (upstream's gamepad reader off in Big Picture, 3 lines) |
 | 6 | 2026-11-02 | Player keys, overlay and menus (`src/bigpicture/focus/player.ts`), polyfill off in Big Picture, `e2e/player.e2e.ts`. No upstream files changed |
 | 7 | 2026-11-03 | Launcher entry and autostart (`tv/install.sh`), second-start, leftover-server and busy-port handling, notifications and the CORS check (`tv/launch.sh`), `tv/tests/launcher.test.sh`. No upstream files changed |
+| 8 | 2026-11-03 | First test on the TV PC. Render modes and the soak test (`tv/launch.sh`, `src/bigpicture/soak.ts`), the fake account and signed-in screen tests (`e2e/support/account.ts`, `e2e/screens.e2e.ts`). No upstream files changed |
 
 ## License
 

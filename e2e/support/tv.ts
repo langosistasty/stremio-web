@@ -4,6 +4,7 @@
 
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 import { serveCatalogs, type CatalogDelay } from './catalog';
+import { serveAccount } from './account';
 
 type ShellMessage = { type: number, args?: unknown[] };
 
@@ -14,6 +15,8 @@ type Options = {
     catalogDelay: CatalogDelay,
     // Connect a fake standard-mapping gamepad (remote.pad drives it).
     gamepad: boolean,
+    // Log in to a fake Stremio account with a library (see account.ts) on the first open.
+    account: boolean,
 };
 
 type Remote = {
@@ -88,7 +91,8 @@ const test = base.extend<Options & { remote: Remote }>({
     shell: [false, { option: true }],
     catalogDelay: [0, { option: true }],
     gamepad: [false, { option: true }],
-    remote: async ({ page, context, baseURL, shell, catalogDelay, gamepad }, use) => {
+    account: [false, { option: true }],
+    remote: async ({ page, context, baseURL, shell, catalogDelay, gamepad, account }, use) => {
         // Offline: only the app's own files load. The Stremio API and the streaming
         // server are unreachable; the default addons answer from fixtures.
         await context.route('**/*', (route) => (
@@ -96,6 +100,8 @@ const test = base.extend<Options & { remote: Remote }>({
         ));
         // Registered later, so it takes precedence: the default addons answer from fixtures.
         await serveCatalogs(context, catalogDelay);
+        if (account) await serveAccount(context);
+        let signedIn = !account;
         await page.addInitScript(pageSetup, { shell, gamepad });
 
         const focused = () => page.locator(':focus');
@@ -104,6 +110,18 @@ const test = base.extend<Options & { remote: Remote }>({
             open: async (route = '/', query = '') => {
                 // A fresh load every time, like relaunching; a hash-only goto would not reload.
                 await page.goto('about:blank');
+                if (!signedIn) {
+                    // Through the same core action Intro's log-in form dispatches.
+                    await page.goto('');
+                    await page.waitForFunction(() => (window as any).core);
+                    await page.evaluate(() => (window as any).core.dispatch({
+                        action: 'Ctx',
+                        args: { action: 'Authenticate', args: { type: 'Login', email: 'tv@e2e.invalid', password: 'e2e' } },
+                    }));
+                    await page.waitForFunction(() => ((localStorage.getItem('library') ?? '') + (localStorage.getItem('library_recent') ?? '')).includes('ttlib'));
+                    signedIn = true;
+                    await page.goto('about:blank');
+                }
                 await page.goto(`${query ? `?${query}` : ''}#${route}`);
                 // The app has rendered once the router has a view on screen.
                 await expect(page.locator('#app [class*="route-container"]').first()).toBeVisible();
