@@ -31,9 +31,10 @@ Usage: launch.sh [options]
   --diagnose        Also write ~/stremio-bigpicture-freeze-report.txt on exit
   --render MODE     How Stremio draws the interface (default: auto). Modes:
                       wayland        WebKit's DMA-BUF renderer on Wayland (auto, except on NVIDIA)
-                      wayland-safe   DMA-BUF renderer off (--safe-render)
+                      wayland-safe   DMA-BUF renderer off (--safe-render); black squares on NVIDIA
                       wayland-vulkan DMA-BUF renderer off, GTK's Vulkan renderer
-                      wayland-cpu    WebKit's GPU compositing off; pages are painted by the CPU
+                      wayland-cpu    WebKit's GPU compositing off; on NVIDIA most of the picture stays black
+                      wayland-cpu-paint  Skia paints on the CPU, the GPU composites (auto on NVIDIA)
                       x11            Through XWayland, DMA-BUF renderer on
                       x11-safe       Through XWayland, DMA-BUF renderer off
   --safe-render     Same as --render wayland-safe
@@ -129,7 +130,13 @@ fi
 
 if [ "$RENDER" = auto ]; then
     RENDER=wayland
-    [ -e /dev/nvidia0 ] && RENDER=wayland-safe
+    # With NVIDIA's driver, WebKit's main thread can spin forever inside the driver while
+    # freeing the GPU textures that Skia paints the page's tiles into: the page locks up
+    # at 100% CPU. Skia paints on the CPU instead, and the GPU still composites the tiles,
+    # so the picture stays whole (turning compositing off leaves it mostly black, and the
+    # DMA-BUF renderer off gives black squares). mpv still decodes and draws video on the
+    # GPU. See BIGPICTURE.md, "Freezes".
+    [ -e /dev/nvidia0 ] && RENDER=wayland-cpu-paint
 fi
 # Flatpak options per mode. Stremio's own start script forces GTK's OpenGL renderer on
 # NVIDIA, so the Vulkan mode starts the shell binary directly.
@@ -140,6 +147,7 @@ case "$RENDER" in
     wayland-safe) RENDER_ARGS=("$NO_DMABUF") ;;
     wayland-vulkan) RENDER_ARGS=("$NO_DMABUF" --env=GSK_RENDERER=vulkan --command=/app/libexec/stremio/stremio) ;;
     wayland-cpu) RENDER_ARGS=(--env=WEBKIT_DISABLE_COMPOSITING_MODE=1) ;;
+    wayland-cpu-paint) RENDER_ARGS=(--env=WEBKIT_SKIA_ENABLE_CPU_RENDERING=1) ;;
     x11) RENDER_ARGS=("${X11[@]}") ;;
     x11-safe) RENDER_ARGS=("${X11[@]}" "$NO_DMABUF") ;;
     *) echo "Unknown render mode: $RENDER" >&2; usage >&2; exit 64 ;;
@@ -162,7 +170,8 @@ SERVER_PID=""
 SAMPLER_PID=""
 APP_PID=""
 cleanup() {
-    [ -n "$APP_PID" ] && kill "$APP_PID" 2>/dev/null
+    # Killing only `flatpak run` would leave Stremio itself open, perhaps frozen.
+    [ -n "$APP_PID" ] && stop_app
     [ -n "$SAMPLER_PID" ] && kill "$SAMPLER_PID" 2>/dev/null
     [ -n "$SERVER_PID" ] && kill "$SERVER_PID" 2>/dev/null
     python3 -I "$SELF_DIR/diagnose.py" analyze "$RECORDING" | sanitize > "$STATE_DIR/last-report.txt"
@@ -258,9 +267,11 @@ while kill -0 "$APP_PID" 2>/dev/null; do
     done
     RESTARTS=("${RECENT[@]}")
     if [ "${#RESTARTS[@]}" -ge "$MAX_RESTARTS" ]; then
-        echo "WATCHDOG GAVE UP at $(date +%H:%M:%S): $REASON, but it already restarted Stremio $MAX_RESTARTS times in $((RESTART_WINDOW / 60)) minutes." >> "$RECORDING/events.log"
-        WATCHDOG=0
-        continue
+        echo "WATCHDOG GAVE UP at $(date +%H:%M:%S): $REASON, but it already restarted Stremio $MAX_RESTARTS times in $((RESTART_WINDOW / 60)) minutes. Closed Stremio." >> "$RECORDING/events.log"
+        # A frozen fullscreen window would leave the TV stuck; close it and say why.
+        stop_app
+        tell "Stremio kept freezing, so it was closed. The report is in $STATE_DIR/last-report.txt."
+        break
     fi
     echo "WATCHDOG RESTARTED STREMIO at $(date +%H:%M:%S): $REASON." >> "$RECORDING/events.log"
     RESTARTS+=("$TICK")

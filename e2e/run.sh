@@ -52,11 +52,14 @@ if [ -n "$ENGINE" ]; then
     # Files the tests write stay owned by you.
     USER_ARGS=(--user "$(id -u):$(id -g)")
     [ "$ENGINE" = podman ] && USER_ARGS=(--userns=keep-id)
-    exec "$ENGINE" run --rm --network host --ipc host "${USER_ARGS[@]}" -e HOME=/tmp -e CI -e E2E_WORKERS -e E2E_SHOTS \
+    # No core dumps: WebKit's test build aborts on purpose when a test closes its page,
+    # and on a desktop each dump would raise the system's crash dialog (KDE's DrKonqi).
+    exec "$ENGINE" run --rm --network host --ipc host --ulimit core=0 "${USER_ARGS[@]}" -e HOME=/tmp -e CI -e E2E_WORKERS -e E2E_SHOTS \
         -v "$REPO:$REPO" -w "$E2E" "$IMAGE" node_modules/.bin/playwright test "$@"
 fi
 
 echo "No usable Docker or Podman: running on the host." >&2
+ulimit -c 0  # no crash dialogs for test browsers' deliberate aborts (see above)
 $PNPM exec playwright install chromium
 if $PNPM exec playwright install webkit >/dev/null 2>&1; then
     exec $PNPM exec playwright test "$@"

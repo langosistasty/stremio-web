@@ -19,6 +19,10 @@ const shoot = async (remote: Remote, name: string) => {
 
 test.describe('screenshots', () => {
     test.skip(!SHOTS, 'set E2E_SHOTS=1 to take screenshots');
+    // Headless WebKit draws no frames between screenshots, so a transition starts only
+    // when one is taken and the picture shows its first frame (upstream's white ring
+    // instead of the amber one). Without motion the screens show their settled look.
+    test.use({ reducedMotion: 'reduce' });
     test.describe.configure({ mode: 'parallel' });
 
     test.describe('online', () => {

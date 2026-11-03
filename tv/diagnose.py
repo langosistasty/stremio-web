@@ -105,7 +105,10 @@ def read_jsonl(path):
 # Watchdog thresholds. Generous, because restarting interrupts whatever was on screen.
 # The environment overrides exist for tests.
 PAGE_SILENT_SECONDS = int(os.environ.get("BIGPICTURE_PAGE_SILENT_SECONDS", 45))
-FIRST_HEARTBEAT_SECONDS = int(os.environ.get("BIGPICTURE_FIRST_HEARTBEAT_SECONDS", 120))
+# A start takes about 5 s on the TV PC (2026-11-03); 60 s leaves room for a cold disk
+# after boot, and a web process that crashed while starting (a rare Skia error) leaves
+# a blank screen for at most a minute.
+FIRST_HEARTBEAT_SECONDS = int(os.environ.get("BIGPICTURE_FIRST_HEARTBEAT_SECONDS", 60))
 FROZEN_PICTURE_BEATS = 10  # 20 s of heartbeats
 
 

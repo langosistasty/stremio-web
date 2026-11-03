@@ -101,7 +101,9 @@ test.describe('screen by screen', () => {
         // Down from the tabs reaches the list of installed addons.
         await remote.press('ArrowDown');
         await expect(remote.focused()).toContainText('Cinemeta');
-        const addon = await remote.focused().evaluate((element) => element.outerHTML.slice(0, 200));
+        // The same addon, whichever way its focus ring is drawn.
+        const addonHtml = (element: Element) => element.outerHTML.replace(' data-bigpicture-ring-inside=""', '').slice(0, 200);
+        const addon = await remote.focused().evaluate(addonHtml);
         await remote.press('Enter');
         const dialog = remote.page.locator('[data-focus-lock-disabled="false"]');
         await expect(dialog).toBeVisible();
@@ -112,7 +114,7 @@ test.describe('screen by screen', () => {
         await remote.press('Escape');
         await expect(dialog).toHaveCount(0);
         await expect(remote.page).toHaveURL(/#\/addons/);
-        await expect.poll(() => remote.focused().evaluate((element) => element.outerHTML.slice(0, 200))).toBe(addon);
+        await expect.poll(() => remote.focused().evaluate(addonHtml)).toBe(addon);
     });
 
     test('Intro: the log-in fields take text, and arrows move between them', async ({ remote }) => {
@@ -177,5 +179,58 @@ test.describe('signed in', () => {
             await remote.press('ArrowUp');
             await expect(prev).toBeFocused();
         }
+    });
+
+    test('the focus ring is drawn inside where a container would cut it, outside elsewhere', async ({ remote }) => {
+        const ringInside = () => remote.focused().evaluate((element) => element.hasAttribute('data-bigpicture-ring-inside'));
+        await remote.open('/calendar', BIG_PICTURE);
+        // The month selector is exactly as tall as its arrows and clips.
+        await expect(remote.view().locator('[class*="prev"]').first()).toBeFocused({ timeout: 8000 });
+        await expect.poll(ringInside).toBe(true);
+        // The streams list scrolls, and its first stream touches its top.
+        await remote.open('/detail/movie/ttmovie-top-1', BIG_PICTURE);
+        await expect(remote.focused()).toContainText(/WatchHub|Fixture/, { timeout: 8000 });
+        await expect.poll(ringInside).toBe(true);
+        await remote.open('/settings', BIG_PICTURE);
+        await expect(remote.focused()).toContainText(/general/i);
+        await expect.poll(ringInside).toBe(false);
+    });
+
+    test('Calendar: Up from the right-hand columns reaches the next-month arrow', async ({ remote }) => {
+        await remote.open('/calendar', BIG_PICTURE);
+        const view = remote.view();
+        const prev = view.locator('[class*="prev"]').first();
+        const next = view.locator('[class*="next"]').first();
+        await expect(prev).toBeFocused({ timeout: 8000 });
+        // The days in the grid's first row; its last two columns sit under the next-month
+        // arrow, the very last one in line with it, the one before 44 px off.
+        const firstRow = () => view.locator('[class*="cell-"][tabindex]').evaluateAll((cells) => {
+            const top = Math.min(...cells.map((cell) => cell.getBoundingClientRect().top));
+            return cells.filter((cell) => cell.getBoundingClientRect().top === top).length;
+        });
+        // Go back to a month whose first row reaches the second-last column (it starts
+        // on a weekday before the last).
+        for (let month = 0; month < 3 && await firstRow() < 2; month += 1) {
+            const url = remote.page.url();
+            await remote.press('Enter');
+            await expect(remote.page).not.toHaveURL(url);
+            await expect(prev).toBeFocused();
+            await remote.page.waitForTimeout(400);
+        }
+        expect(await firstRow()).toBeGreaterThanOrEqual(2);
+        // Right to the next-month arrow, Down to the last column's day, Left to the one before.
+        await remote.press('ArrowRight');
+        await expect(next).toBeFocused();
+        await remote.press('ArrowDown');
+        await remote.press('ArrowLeft');
+        const inSecondLastColumn = () => remote.focused().evaluate((element) => {
+            const cell = element.closest('[class*="cell-"]');
+            const cells = Array.from(document.querySelectorAll('[class*="cell-"][tabindex]'));
+            const lefts = [...new Set(cells.map((other) => Math.round(other.getBoundingClientRect().left)))].sort((a, b) => a - b);
+            return cell !== null && Math.round(cell.getBoundingClientRect().left) === lefts[lefts.length - 2];
+        });
+        expect(await inSecondLastColumn()).toBe(true);
+        await remote.press('ArrowUp');
+        await expect(next).toBeFocused();
     });
 });

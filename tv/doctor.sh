@@ -300,8 +300,13 @@ start_server() {
     fi
 }
 
+# The same rendering as launch.sh picks, so the doctor tests what you'll use: on NVIDIA,
+# Skia paints on the CPU (see launch.sh and BIGPICTURE.md, "Freezes").
+RENDER_ARGS=()
+[ -e /dev/nvidia0 ] && RENDER_ARGS=(--env=WEBKIT_SKIA_ENABLE_CPU_RENDERING=1)
+
 start_app() { # url log_level log_file
-    setsid flatpak run "--env=RUST_LOG=$2" "$APP_ID" "--url=$1" >"$3" 2>&1 </dev/null &
+    setsid flatpak run "--env=RUST_LOG=$2" "${RENDER_ARGS[@]}" "$APP_ID" "--url=$1" >"$3" 2>&1 </dev/null &
     APP_PID=$!
 }
 

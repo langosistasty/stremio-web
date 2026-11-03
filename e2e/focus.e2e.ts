@@ -84,6 +84,8 @@ test.describe('in Big Picture', () => {
         await expect(remote.page).toHaveURL(/#\/discover/);
         // Focus was last on the Library tab, in Discover's own rail.
         await expect(view.locator('nav a[href="#/library"]')).toBeFocused();
+        // Discover remounts empty; Right waits up to 2 s for its posters, a loaded test machine longer.
+        await expect(view.locator('a[href*="#/detail/"]').first()).toBeVisible();
         await remote.press('ArrowRight');
         await expect(remote.focused()).toHaveAttribute('href', /#\/detail\//);
     });

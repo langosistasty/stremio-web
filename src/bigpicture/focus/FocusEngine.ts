@@ -8,8 +8,8 @@ import nextInDirection from './spatial';
 import { checkPlayer, playerKey } from './player';
 import { openKeyboard, wantsKeyboard } from '../input/keyboard';
 import {
-    currentLayer, focusElement, focusables, inLayer, inRail, isEditable, isFocusable,
-    focusGroup, isTextInput, keepsArrow, navigationScope, openLayer, openedMenu, railEntry, railOf, scrollFurther, topRoute, type Direction,
+    currentLayer, fitRing, focusElement, focusables, inLayer, inRail, isEditable, isFocusable,
+    focusGroup, headerOf, isTextInput, keepsArrow, navigationScope, openLayer, openedMenu, railEntry, railOf, scrollFurther, topRoute, unfitRing, type Direction,
 } from './dom';
 
 type Navigation = {
@@ -53,6 +53,7 @@ const START_RULES: { path: RegExp, selectors: string[], wait: boolean }[] = [
 const CLOSE_BUTTON = '[class*="close-button"], [class*="cancel-button"]';
 const CLOSE_STEP_MS = 150;
 const SCROLL_RETRY_MS = 250;
+const RAIL_RETRIES = 8;
 const MENU_OPEN_MS = 120;
 const PAGE_STEPS = 3;
 
@@ -67,6 +68,25 @@ const consume = (event: Event) => {
     event.stopImmediatePropagation();
 };
 
+// Up from the screen goes to a control of the screen roughly above (out of line by at
+// most half the focused control's width) before the top bar, as on a TV: Calendar's
+// next-month arrow sits 44 px off its last columns, while the wide search bar lines up
+// with them. Anything further out of line, like Search's "See All" at the far right of
+// the first result, still loses to the top bar.
+const ROUGHLY_ABOVE = 0.5;
+const roughlyAboveInScreen = (active: HTMLElement, candidates: HTMLElement[], direction: Direction, scope: Element): HTMLElement | null => {
+    if (direction !== 'up' || inRail(active)) return null;
+    const header = headerOf(scope);
+    if (!header || header.contains(active)) return null;
+    const screen = candidates.filter((candidate) => !header.contains(candidate));
+    const next = nextInDirection(active, screen, direction, true);
+    if (!next) return null;
+    const from = active.getBoundingClientRect();
+    const to = next.getBoundingClientRect();
+    const outOfLine = Math.max(0, to.left - from.right, from.left - to.right);
+    return outOfLine <= ROUGHLY_ABOVE * from.width ? next : null;
+};
+
 class FocusEngine {
     private memory = new FocusMemory();
     private navigation: Navigation = { entry: '', type: 'POP', path: '/', search: '' };
@@ -78,6 +98,9 @@ class FocusEngine {
     private watchdog = 0;
     // A control focused only because the wait for content ran out; see check().
     private provisional: HTMLElement | null = null;
+    // How the stopgap was chosen: after Back, late content should bring back the control
+    // that was focused there, not the view's first one.
+    private provisionalMode: Pending['mode'] = 'initial';
     // The last control focused outside the nav rail, for Right out of the rail.
     private lastContent: HTMLElement | null = null;
 
@@ -136,6 +159,7 @@ class FocusEngine {
     }
 
     private onFocusOut = (event: FocusEvent) => {
+        if (event.target instanceof HTMLElement) unfitRing(event.target);
         if (event.relatedTarget === null) this.schedule();
     };
 
@@ -206,6 +230,7 @@ class FocusEngine {
     private onFocusIn = (event: FocusEvent) => {
         const view = topRoute();
         const target = event.target;
+        if (target instanceof HTMLElement) fitRing(target);
         if (!view || !(target instanceof HTMLElement) || !view.contains(target) || inLayer(target)) return;
         this.pending = null;
         this.memory.remember(view, this.navigation.entry, this.place, target, Array.from(view.querySelectorAll(ALL_CONTROLS)));
@@ -234,6 +259,7 @@ class FocusEngine {
         // the whole screen. Up and Down search the whole screen, so they cross rows.
         const group = direction === 'left' || direction === 'right' ? focusGroup(active, candidates, scope) : null;
         let next = (group && nextInDirection(active, candidates.filter((candidate) => group.contains(candidate)), direction, allowMisaligned)) ??
+            roughlyAboveInScreen(active, candidates, direction, scope) ??
             nextInDirection(active, candidates, direction, allowMisaligned);
         // Left enters the nav rail at the current tab, from any row, as TV apps do.
         // Right out of the rail goes back to where you left the screen, as TV apps do,
@@ -254,6 +280,17 @@ class FocusEngine {
             window.setTimeout(() => {
                 if (document.activeElement === from) this.move(direction, false);
             }, SCROLL_RETRY_MS);
+        } else if (retry && direction === 'right' && inRail(active)) {
+            // Back to a view that is still loading (Discover remounts empty): its posters
+            // may be a moment away, so keep looking for 2 s rather than lose the key press.
+            const from = active;
+            let tries = 0;
+            const look = () => {
+                if (document.activeElement !== from) return;
+                this.move(direction, false);
+                if (document.activeElement === from && ++tries < RAIL_RETRIES) window.setTimeout(look, SCROLL_RETRY_MS);
+            };
+            window.setTimeout(look, SCROLL_RETRY_MS);
         }
     }
 
@@ -330,6 +367,12 @@ class FocusEngine {
         if (this.navigation.path.startsWith('/player')) {
             this.view = view;
             this.pending = null;
+            // The stream that was played can keep focus in Details while it goes away, and
+            // then the player isn't in its watching state.
+            const active = document.activeElement;
+            if (view && active instanceof HTMLElement && active !== document.body && !view.contains(active) && !inLayer(active)) {
+                active.blur();
+            }
             checkPlayer(view);
             return;
         }
@@ -358,7 +401,7 @@ class FocusEngine {
             this.pending = null;
             // Content that was slow to load replaces a stopgap, until the first key press.
             if (active === this.provisional) {
-                const choice = this.pick(view, { mode: 'initial', since: 0 });
+                const choice = this.pick(view, { mode: this.provisionalMode, since: 0 });
                 if (choice && choice.element !== active) {
                     this.provisional = choice.final ? null : choice.element;
                     engineStats.focused += 1;
@@ -374,6 +417,7 @@ class FocusEngine {
         this.pending = this.pending ?? { mode: 'restore', since: Date.now() };
         const choice = this.pick(view, this.pending);
         if (choice) {
+            this.provisionalMode = this.pending.mode;
             this.pending = null;
             this.provisional = choice.final ? null : choice.element;
             engineStats.focused += 1;

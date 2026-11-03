@@ -41,6 +41,7 @@ html[data-bigpicture] {
     --bp-usher: #A3ABC2;        /* secondary text */
     --bp-projector: #FFB547;    /* the one accent: focus, the current tab, progress */
     --bp-projector-glow: rgba(255, 181, 71, 0.45);
+    --bp-projector-deep: #9E5C00; /* the accent as a fill under white text (4.5:1) */
     --bp-font-display: 'BP Display', 'PlusJakartaSans', sans-serif;
     --bp-font-text: 'BP Text', 'PlusJakartaSans', 'Arial', 'TwemojiFlags', sans-serif;
     --bp-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -57,6 +58,10 @@ html[data-bigpicture] {
     /* Upstream's blue marks selected chips (Library's sort order); in the TV look the
        selection is quiet and only focus gets the accent. */
     --quaternary-accent-color: var(--bp-aisle);
+    /* Upstream's green fills switches, play buttons, Install, the chosen track and
+       dialog buttons, all under white text (2.4:1 on the green). The deep amber keeps
+       the white text readable everywhere it's used, with no rule per control. */
+    --secondary-accent-color: var(--bp-projector-deep);
 
     font-family: var(--bp-font-text);
 }
@@ -75,6 +80,13 @@ html[data-bigpicture] :focus {
     outline: 0.3rem solid var(--bp-projector) !important;
     outline-offset: 0.2rem !important;
     box-shadow: 0 0 1.75rem 0.25rem var(--bp-projector-glow) !important;
+}
+
+/* Where a clipping container would cut the ring, it's drawn inside the control
+   (focus/dom.ts, fitRing), with the glow inside too. */
+html[data-bigpicture] [data-bigpicture-ring-inside]:focus {
+    outline-offset: -0.3rem !important;
+    box-shadow: inset 0 0 1.25rem var(--bp-projector-glow) !important;
 }
 
 /* Posters: the ring goes on the artwork, not around artwork and title; the focused one
@@ -147,7 +159,7 @@ html[data-bigpicture] [class*="vertical-nav-bar-container-"]:focus-within [class
 
 /* Details: the stream's play button and "Install addons" take the accent, with dark
    icons and text on it (white on amber can't be read from a couch). Elsewhere upstream's
-   green stays: it carries white text in many places. */
+   green becomes the deep amber, which carries white text (see the tokens). */
 html[data-bigpicture] [class*="stream-container-"] [class*="icon-"] {
     background-color: var(--bp-projector);
     color: var(--bp-auditorium);

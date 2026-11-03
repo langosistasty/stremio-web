@@ -93,6 +93,14 @@ const railEntry = (scope: Element): HTMLElement | null => {
     return tabs.find((tab) => tab.classList.contains('selected')) ?? tabs[0] ?? null;
 };
 
+// The top bar (search, profile): a nav bar much wider than tall.
+const headerOf = (scope: Element): HTMLElement | null => (
+    Array.from(scope.querySelectorAll('nav')).find((nav) => {
+        const { width, height } = nav.getBoundingClientRect();
+        return width > height * 2;
+    }) ?? null
+);
+
 const inRail = (element: Element) => {
     const nav = element.closest('nav');
     if (!nav) return false;
@@ -184,6 +192,34 @@ const fullyVisible = (element: HTMLElement) => {
     return true;
 };
 
+// The focus ring is drawn outside a control. Where a container that clips would cut it
+// (a scrolling list whose first item touches its top, Calendar's month selector, sized
+// to its arrows), the ring is drawn inside the control instead (theme/index.ts).
+const RING_INSIDE = 'data-bigpicture-ring-inside';
+const fitRing = (element: HTMLElement) => {
+    element.removeAttribute(RING_INSIDE);
+    // A control that isn't fully visible yet is measured again once scrolled (focusElement).
+    if (!fullyVisible(element)) return;
+    const style = window.getComputedStyle(element);
+    if (style.outlineStyle === 'none') return;
+    const reach = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
+    if (!(reach > 0)) return;
+    const rect = element.getBoundingClientRect();
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+        const { overflowX, overflowY } = window.getComputedStyle(node);
+        const clipsX = overflowX !== 'visible';
+        const clipsY = overflowY !== 'visible';
+        if (!clipsX && !clipsY) continue;
+        const clip = node.getBoundingClientRect();
+        if ((clipsY && (rect.top - reach < clip.top || rect.bottom + reach > clip.bottom)) ||
+            (clipsX && (rect.left - reach < clip.left || rect.right + reach > clip.right))) {
+            element.setAttribute(RING_INSIDE, '');
+            return;
+        }
+    }
+};
+const unfitRing = (element: HTMLElement) => element.removeAttribute(RING_INSIDE);
+
 // Scroll only when needed, and then put the control mid-screen vertically, as TV apps
 // do: rows stay in a steady place, and the top of a page is never scrolled away.
 const focusElement = (element: HTMLElement) => {
@@ -195,16 +231,21 @@ const focusElement = (element: HTMLElement) => {
     }
     if (!fullyVisible(element)) {
         element.scrollIntoView({ block: 'center', inline: 'nearest' });
+        // Focusing measured the ring before the scroll; a list's first or last item can't
+        // reach mid-screen and may end up against its edge.
+        if (document.activeElement === element) fitRing(element);
     }
 };
 
 export type { Direction };
 export {
     currentLayer,
+    fitRing,
     focusElement,
     fullyVisible,
     focusGroup,
     focusables,
+    headerOf,
     inLayer,
     inRail,
     isEditable,
@@ -218,4 +259,5 @@ export {
     railOf,
     scrollFurther,
     topRoute,
+    unfitRing,
 };

@@ -58,6 +58,7 @@ The local UI is its own origin, so it has its own login and settings, separate f
   - **Focus groups:** Left and Right look first inside the smallest group around the control (a row's posters, a bar's buttons).
   - **What counts as "in that direction":** a control must start past the current one's middle, so overlapping layouts like a bar over the last row still work.
   - **The rail:** it's only entered with Left; Up and Down stay out of it.
+  - **The top bar:** Up goes to a control of the screen roughly above (out of line by at most half the focused control's width) before the top bar. Calendar's next-month arrow is 44 px off its second-last column, while the wide search bar lines up with it; Search's "See All", at the far right of the first result, is not roughly above it, so Up there still reaches the search field.
   - **Covered controls:** a control fully on screen, and fully inside its scrolling list, but covered by something else is skipped. One clipped by its list (a row scrolled up behind Board's hero) stays reachable, since scrolling brings it back.
   - **Lazy lists:** with nothing further down, Up and Down scroll the list and look again, for lists that render as they scroll (Search, Discover).
   - **Dropdowns:** a dropdown that opens takes focus, on its chosen option, so Back closes it first.
@@ -129,17 +130,19 @@ Big Picture has its own look (`src/bigpicture/theme/`), approved on 2026-11-03. 
 | Screen | `#F1EEE6` | Main text |
 | Usher | `#A3ABC2` | Secondary text |
 | Projector | `#FFB547` | The one accent: focus, the current screen, progress |
+| Deep projector | `#9E5C00` | The accent as a fill under white text: switches, Install, the chosen track, dialog buttons (4.5:1; upstream's green was 2.4:1) |
 
 - **Type:** Big Shoulders Display, a condensed face from Chicago signage, for titles; Atkinson Hyperlegible Next, designed for legibility, for everything else. Both are bundled under the SIL Open Font License (`src/bigpicture/theme/fonts/`), with Latin and Latin Extended (ő, ű) subsets, so a TV needs no network for them.
 - **How:** upstream draws its colours from CSS variables, so the theme sets those variables to the tokens, scoped to `html[data-bigpicture]`. Upstream's CSS modules have hashed class names, so the few direct rules match on class-name prefixes.
 - **Posters:** the focused poster grows a little, with the ring on its artwork, and only it shows its name.
+- **Ring inside where it would be cut:** the ring is drawn outside a control, but where a container that clips would cut it (Calendar's month selector, exactly as tall as its arrows; the first stream at the top of its scrolling list), it's drawn inside instead (`focus/dom.ts`, `fitRing`).
 - **Rail:** quiet icons; the current screen's is amber, and the labels show when focus enters the rail. Search has a tab there, second after Board (`screens/RailSearch.tsx`, upstream's own tab button rendered into the rail).
 - **Board's hero** (`screens/BoardHero.tsx`): the focused title's backdrop fills the top half, fading into the room on the left and below, with its name in the display face, its year, runtime, genres and rating, and three lines of description. It follows focus once focus rests for 250 ms, with a 300 ms crossfade, from the previews the core already holds for Board. The top bar gives way to it on Board (Search is in the rail), the rows show posters only, since the hero names the focused one, and the focused row stays just under the hero.
-- **Details:** the stream's play button and "Install addons" take the accent, with dark icons and text on it. Elsewhere upstream's green stays for now, because it carries white text in many places and white on amber can't be read from a couch. The section labels (Genres, Cast, Directors) are in sentence case and the secondary grey instead of faded capitals.
+- **Details:** the stream's play button and "Install addons" take the accent, with dark icons and text on it. Elsewhere upstream's green becomes the deep projector amber, which keeps upstream's white text readable, so no control needs its own rule. The section labels (Genres, Cast, Directors) are in sentence case and the secondary grey instead of faded capitals.
 - **Board's hero before any focus:** it shows Board's first title, and while focus is in the rail it keeps the last one, so the top of the screen is never empty.
 - **No upstream change for the screens:** the hero and the rail tab are rendered through portals into the view on screen, found by class-name prefix (`screens/usePortalTarget.ts`). It's re-checked twice a second, because Board first renders a placeholder copy of its layout while loading.
 - **Motion:** short (160 ms) and only in answer to a key press. With reduced motion on, it's instant.
-- **Screenshots:** `E2E_SHOTS=1 e2e/run.sh --no-build --project=webkit screenshots` saves every screen at 1920×1080 to `e2e/shots/`, with real addons and artwork for the public screens (needs the network) and the fake account for Library and Calendar.
+- **Screenshots:** `E2E_SHOTS=1 e2e/run.sh --no-build --project=webkit screenshots` saves every screen at 1920×1080 to `e2e/shots/`, with motion reduced (headless WebKit draws no frames between screenshots, so a transition would show its first frame), with real addons and artwork for the public screens (needs the network) and the fake account for Library and Calendar.
 
 ## TV layout
 
@@ -219,20 +222,38 @@ The doctor reports the decoder, decode errors, whole-system CPU and NVDEC load. 
 
 - **Heartbeat:** the page (`src/bigpicture/diagnostics.ts`, on with `?diagnostics=1`, which the launcher always sets) posts to the local server every 2 s. Each heartbeat holds the frames drawn, the longest main-thread block, the key presses received, the focused control's kind, the focus engine's activity and the route name, with no titles or ids.
 - **Processes:** `tv/diagnose.py` samples CPU and memory of each Stremio process, and NVIDIA GPU load.
-- **Watchdog:** the launcher restarts Stremio when the page sends no heartbeat for 45 s, or when the picture stays still for 20 s while keys keep arriving. A still picture with no key presses is normal, for example with the screen off. A system suspend resets the clocks. After 3 restarts in 10 minutes it gives up and only records. Turn it off with `--no-watchdog`.
-- **Safe rendering:** on NVIDIA (`/dev/nvidia0`), the launcher sets `WEBKIT_DISABLE_DMABUF_RENDERER=1`, the common workaround for WebKitGTK freezes with NVIDIA's driver. It costs menu smoothness (about 30 instead of 60 frames per second) but not video, which mpv draws.
-- **Render modes:** `--render MODE` picks how Stremio draws: `wayland`, `wayland-safe` (the NVIDIA default), `wayland-vulkan` (GTK's Vulkan renderer; Stremio's own start script forces OpenGL on NVIDIA, so this starts the shell binary directly), `wayland-cpu` (no GPU compositing), `x11` and `x11-safe` (through XWayland). `--safe-render` and `--no-safe-render` are `wayland-safe` and `wayland`.
+- **Watchdog:** the launcher restarts Stremio when the page sends no heartbeat for 45 s (60 s after a start), or when the picture stays still for 20 s while keys keep arriving. A still picture with no key presses is normal, for example with the screen off. A system suspend resets the clocks. After 3 restarts in 10 minutes it gives up: it closes Stremio, so a frozen window never stays on the TV, and says so on screen. Stopping the launcher closes Stremio too. Turn the watchdog off with `--no-watchdog`.
+- **CPU painting on NVIDIA:** on NVIDIA (`/dev/nvidia0`), the launcher picks `wayland-cpu-paint`, which sets `WEBKIT_SKIA_ENABLE_CPU_RENDERING=1`: Skia paints the page's tiles on the CPU and the GPU still composites them. The GPU textures Skia would paint into are what NVIDIA's driver hangs on (below). Video is unaffected: mpv still decodes and draws it on the GPU.
+- **Render modes:** `--render MODE` picks how Stremio draws: `wayland`, `wayland-safe`, `wayland-cpu` (no GPU compositing), `wayland-cpu-paint` (the NVIDIA default), `wayland-vulkan` (GTK's Vulkan renderer; Stremio's own start script forces OpenGL on NVIDIA, so this starts the shell binary directly), `x11` and `x11-safe` (through XWayland). `--safe-render` and `--no-safe-render` are `wayland-safe` and `wayland`.
 - **Soak test:** `--soak` makes the page browse by itself (`src/bigpicture/soak.ts`): it visits Board, Discover, Library, Calendar, Search and Settings and moves around each with arrow keys, so a render mode can be tested for freezes with no one at the remote. The screen must be on: a hidden page draws nothing.
+- **The picture needs its own check:** heartbeats prove the page runs and draws frames, not that the screen shows them whole. Each mode below was also screenshotted every 3 to 5 s (`spectacle -b -n -f -o FILE`) and every screenshot scanned for 40 px tiles of pure black (every channel at most 3; the theme's darkest colour is `#0D1220`).
 
 **First test on the TV PC (2026-11-03, GTX 1050, driver 580.196.07, KDE Wayland):**
-- `wayland-safe`, the default: black boxes flash across the menus. No freeze in 3.5 minutes.
-- `wayland`: no black boxes, but two freezes in 5 minutes, one on Calendar and one on Board with no key pressed. Both times drawing stopped first (frames fell to 17, then 0, while the page's JavaScript still ran), and a few seconds later WebKit's process ran at 100% CPU. The watchdog restarted Stremio both times. That's the WebKit DMA-BUF freeze on NVIDIA, so this fork's code isn't the cause.
-- Still to test with `--soak`: `x11`, `x11-safe`, `wayland-vulkan` and `wayland-cpu`. The default stays `wayland-safe` until one of them shows neither problem.
+- `wayland-safe`, then the default: black boxes flash across the menus. No freeze in 3.5 minutes.
+- `wayland`: no black boxes, but two freezes in 5 minutes. Both times drawing stopped first, and a few seconds later WebKit's process ran at 100% CPU.
+
+**The cause and the fix (2026-11-03 evening, WebKitGTK 2.52 in GNOME runtime 50):**
+- `x11`: 4 lockups in 10 minutes, the first after 90 s. The watchdog restarted Stremio 3 times, then gave up and (before this fix) left the frozen window on screen.
+- A stack of the hung web process (`gdb -p PID -batch -ex "set sysroot /proc/PID/root" -ex bt`; `eu-stack` can't see into the Flatpak sandbox), sampled three times, always showed the main thread spinning at 100% CPU inside NVIDIA's driver while WebKit freed a texture: `WebCore::BitmapTexturePool::releaseUnusedTexturesTimerFired` → `WebCore::BitmapTexture::~BitmapTexture` → `libnvidia-eglcore.so.580.196.07`. WebKit frees unused textures on a timer, most of all after a screen full of posters, so it struck after Library and Calendar. This fork's code isn't involved.
+- Every mode, 10 minutes of the soak test with screenshots (3 minutes for the GTK renderer variants):
+
+| Mode | Black areas | Lockups |
+|---|---|---|
+| `wayland-safe` (DMA-BUF renderer off) | in 33 of 47 screenshots, up to 40% of the screen | none in 3 minutes |
+| `x11`, `wayland` (DMA-BUF renderer on) | none | 4 in 10 minutes; 2 in 5 |
+| `WEBKIT_DMABUF_RENDERER_FORCE_SHM=1` | none | 4 in 10 minutes, the first after 42 s |
+| `WEBKIT_DISABLE_DMABUF_ATLAS=1` | none | 4 in 10 minutes, the first after 48 s |
+| `wayland-cpu` (`WEBKIT_DISABLE_COMPOSITING_MODE=1`) | only the last changed area is drawn, the rest black, in 155 of 159 screenshots; the same with GTK's `cairo`, `ngl` and `vulkan` renderers and `GSK_DEBUG=full-redraw` | none in 40 minutes |
+| **`wayland-cpu-paint`** (`WEBKIT_SKIA_ENABLE_CPU_RENDERING=1`) | **none in 157 screenshots** | **none in 10 minutes**, median 58 frames per second |
+
+- Then `wayland-cpu-paint` for 60 minutes in auto mode: 1801 heartbeats, no freeze or stall (median 59 fps, worst main-thread lag 182 ms), 618 screenshots with the whole picture drawn (the 2 the scan flagged were dark artwork, checked by eye), web process peak 1 GB, GPU peak 53%.
+- Video with `wayland-cpu-paint`: the H.264 and HEVC 10-bit samples (1080p and 4K) decode on the GPU (`vulkan-copy`) at 13% to 23% CPU, the AV1 sample in software at 19% (the GTX 1050 has no AV1 decoder). Every picture moved and was drawn whole.
+- Once in 14 starts, WebKit's web process crashed at startup on a Skia shader error (`SkRuntimeEffectPriv.h:217: integer is too large: 0`). It didn't recur in 12 starts in a row. The watchdog restarted it after 2 minutes; it now waits at most 60 s for a first heartbeat.
 
 | The report says | Meaning |
 |---|---|
 | PAGE STOPPED | The page's JavaScript stopped: the app or this fork's code |
-| DRAWING STOPPED while the page still ran | WebKit or the GPU driver stopped painting; try `--safe-render` |
+| DRAWING STOPPED while the page still ran | WebKit or the GPU driver stopped painting; try another `--render` mode |
 | WINDOW NOT FOCUSED | Keys went to another window |
 | FOCUS ENGINE BUSY | The focus engine kept moving focus by itself |
 
@@ -242,10 +263,6 @@ The doctor reports the decoder, decode errors, whole-system CPU and NVDEC load. 
 |---|---|
 | Library redirects `/library` to its default filter with a push instead of a replace, so Back (upstream's Backspace shortcut too) lands on `/library` and is sent forward again | Fixed here, 1 line; worth sending upstream |
 | `Routes.tsx` applies a push inside `startViewTransition`, with the location captured. If Back happens before the transition callback runs, the stale callback puts the old view back on screen while the URL says otherwise | Not fixed: upstream turns view transitions off on Linux WebKit, so the TV never takes this path |
-
-## Known navigation quirk
-
-On Calendar, Up from a day in the right-hand columns skips the month arrows and lands on the search bar, which lines up better with those columns. Everything stays reachable (the crawl checks that), but the month arrows are reached from the left-hand columns.
 
 ## Known fragile point
 
@@ -271,6 +288,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 9 | 2026-11-03 | Quitting from the remote: Back on Board asks to quit (`src/bigpicture/input/quit.ts`, the focus engine's Back, styles), tests in `e2e/focus.e2e.ts`. No upstream files changed |
 | 10 | 2026-11-03 | The TV look: tokens, bundled fonts, focus, posters and rail on every screen, Board's hero and Search in the rail (`src/bigpicture/theme/`, `src/bigpicture/screens/`); the old ring moved out of `focus/styles.ts`. Focus engine: Right out of the rail returns to where you were, and clipped controls stay reachable. Screenshot tests (`e2e/screenshots.e2e.ts`) and the fake account's addon collection. No upstream files changed |
 | 11 | 2026-11-03 | The TV look on Details: accent play and install buttons, sentence-case section labels (`src/bigpicture/theme/`). Board's hero is never empty. No upstream files changed |
+| 12 | 2026-11-03 | Freeze fix: NVIDIA's driver hangs while WebKit frees the GPU textures Skia paints into, so on NVIDIA Skia paints on the CPU and the GPU still composites (`tv/launch.sh`). The launcher closes a frozen Stremio when the watchdog gives up and when it's stopped, and waits 60 s for a first heartbeat (`tv/diagnose.py`); `tv/doctor.sh` also paints on the CPU on NVIDIA. Upstream's green becomes a deep amber, the focus ring is drawn inside where it would be cut, and Up prefers the screen's control roughly above to the top bar. In the player, a control focused by a key press no longer loses focus before upstream shows the overlay and the played stream no longer keeps focus from Details; after Back, content that loads late brings back the remembered control; and Right out of the rail waits up to 2 s for a view that is still loading (`src/bigpicture/`). No core dumps from test browsers (`e2e/run.sh`). No upstream files changed |
 
 ## License
 

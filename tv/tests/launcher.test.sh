@@ -48,7 +48,7 @@ cp -a "$TV/launch.sh" "$TV/install.sh" "$TV/doctor.sh" "$TV/serve.py" "$TV/diagn
 echo "test, source: launcher test" > "$BUNDLE/VERSION"
 
 # The fake flatpak. "run" behaves like a healthy Stremio: it posts a heartbeat every
-# second (or stops after STUB_BEATS of them, like a frozen page) until killed or until
+# second (or stops after STUB_BEATS of them, like a frozen page) until `flatpak kill` or until
 # STUB_LIFETIME seconds pass, when it "quits".
 STUB="$WORK/bin"
 mkdir -p "$STUB" "$WORK/stub"
@@ -58,7 +58,7 @@ STATE="$STUB_STATE"
 case "$1" in
     info) exit 0 ;;
     ps) [ -f "$STATE/running" ] && echo com.stremio.Stremio; exit 0 ;;
-    kill) [ -f "$STATE/running" ] && kill "$(cat "$STATE/running")" 2>/dev/null; rm -f "$STATE/running"; exit 0 ;;
+    kill) [ -f "$STATE/running" ] && kill -KILL "$(cat "$STATE/running")" 2>/dev/null; rm -f "$STATE/running"; exit 0 ;;
     run)
         url=""
         for argument in "$@"; do case "$argument" in --url=*) url="${argument#--url=}" ;; esac; done
@@ -66,7 +66,8 @@ case "$1" in
         [ -n "$url" ] || exit 0
         port="$(echo "$url" | sed -E 's|.*127.0.0.1:([0-9]+)/.*|\1|')"
         echo "$$" > "$STATE/running"
-        trap 'rm -f "$STATE/running"; exit 0' TERM INT
+        # Like the real one: stopping `flatpak run` leaves Stremio open; only `flatpak kill` ends it.
+        trap '' TERM INT
         beats=0
         for _ in $(seq 1 "${STUB_LIFETIME:-30}"); do
             if [ "$beats" -lt "${STUB_BEATS:-1000}" ]; then
@@ -146,9 +147,21 @@ kill "${BACKGROUND[-1]}" 2>/dev/null
 wait_for 10 bash -c "! (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null"
 
 echo "== a frozen page"
-BIGPICTURE_PAGE_SILENT_SECONDS=6 STUB_BEATS=3 STUB_LIFETIME=40 timeout 90 "$LAUNCH" --port "$PORT" > "$WORK/freeze.log" 2>&1
+BIGPICTURE_PAGE_SILENT_SECONDS=6 STUB_BEATS=3 STUB_LIFETIME=600 timeout 150 "$LAUNCH" --port "$PORT" > "$WORK/freeze.log" 2>&1
+FREEZE_EXIT=$?
 check "the watchdog restarted Stremio" grep -q "WATCHDOG RESTARTED" "$STATE_DIR/last-report.txt"
 check "it gave up after 3 restarts" grep -q "WATCHDOG GAVE UP" "$STATE_DIR/last-report.txt"
+check "giving up closed the frozen Stremio" test ! -f "$STUB_STATE/running"
+check "giving up ended the launcher, rather than leaving it waiting on a frozen app" test "$FREEZE_EXIT" -ne 124
+
+echo "== the launcher stopped while Stremio runs"
+STUB_LIFETIME=60 "$LAUNCH" --port "$PORT" > "$WORK/stopped.log" 2>&1 &
+LAUNCHER=$!
+wait_for 10 test -f "$STUB_STATE/running"
+kill -TERM "$LAUNCHER"
+wait "$LAUNCHER" 2>/dev/null
+check "stopping the launcher closed Stremio too" wait_for 5 test ! -f "$STUB_STATE/running"
+check "and its UI server" wait_for 5 bash -c "! (exec 3<>/dev/tcp/127.0.0.1/$PORT) 2>/dev/null"
 
 echo "== the streaming server's CORS check"
 if port_open 11470; then

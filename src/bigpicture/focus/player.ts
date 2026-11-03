@@ -45,8 +45,14 @@ const openMenu = (player: HTMLElement) => (
 
 const overlayHidden = (player: HTMLElement) => Array.from(player.classList).some((name) => name.startsWith('overlayHidden'));
 
+// Upstream hides the overlay 3 s after the last movement, so for a moment after a wake a
+// hidden overlay only means React hasn't rendered the movement yet.
+const WAKE_SETTLE_MS = 1000;
+let lastWake = 0;
+
 // Keeps the overlay up for another 3 s, as a mouse movement over the player would.
 const wake = (player: HTMLElement) => {
+    lastWake = Date.now();
     player.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
 };
 
@@ -157,10 +163,11 @@ const playerKey = (event: KeyboardEvent, view: Element | null, actions: Actions)
 };
 
 // After DOM changes: when upstream hides the overlay, focus leaves the hidden controls,
-// so the next Left or Right seeks again.
+// so the next Left or Right seeks again. Not just after a wake: a control focused by a
+// key press would lose focus before upstream had shown the overlay.
 const checkPlayer = (view: Element | null) => {
     const player = playerOf(view);
-    if (!player) return;
+    if (!player || Date.now() - lastWake < WAKE_SETTLE_MS) return;
     const active = document.activeElement;
     if (overlayHidden(player) && active instanceof HTMLElement && active !== player && player.contains(active) && !menuOpen(player)) {
         active.blur();
