@@ -11,6 +11,7 @@ import startDiagnostics from './diagnostics';
 import startSoak from './soak';
 import startGamepads from './input/gamepad';
 import { startKeyboardTracking } from './input/keyboard';
+import { closeQuitDialog, openQuitDialog } from './input/quit';
 
 startDiagnostics();
 startSoak();
@@ -39,6 +40,8 @@ const BigPicture = () => {
     const requestFullscreenRef = useRef(requestFullscreen);
     requestFullscreenRef.current = requestFullscreen;
     const shellReady = shell.active && shell.state.initialized;
+    const shellRef = useRef(shell);
+    shellRef.current = shell;
     useEffect(() => {
         // Browsers only allow fullscreen from a user gesture, so this is for the shell.
         if (enabled && shellReady) {
@@ -64,7 +67,11 @@ const BigPicture = () => {
     useEffect(() => {
         if (!enabled) return;
         installStyles();
-        const engine = new FocusEngine(() => goBackRef.current(), (to, options) => navigateRef.current(to, options));
+        // Quitting needs the shell; in a browser, Back on Board does nothing.
+        const onHomeBack = () => {
+            if (shellRef.current.active) openQuitDialog(() => shellRef.current.send('quit'));
+        };
+        const engine = new FocusEngine(() => goBackRef.current(), (to, options) => navigateRef.current(to, options), onHomeBack);
         engine.setNavigation(navigationRef.current);
         engineRef.current = engine;
         const stopEngine = engine.start();
@@ -72,6 +79,7 @@ const BigPicture = () => {
         const stopGamepads = startGamepads();
         const stopKeyboard = startKeyboardTracking();
         return () => {
+            closeQuitDialog();
             stopKeyboard();
             stopGamepads();
             stopPromoting();

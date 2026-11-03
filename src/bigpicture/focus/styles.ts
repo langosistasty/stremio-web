@@ -23,6 +23,45 @@ html[data-bigpicture] :is(a[href], button, input, select, textarea, [tabindex]) 
     scroll-margin: 4rem 3rem;
 }
 
+/* Quit dialog: a centred panel over a dimmed screen. */
+#bigpicture-quit {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+}
+#bigpicture-quit .bigpicture-quit-panel {
+    padding: 2.5rem 3rem;
+    border-radius: 1.5rem;
+    background: var(--modal-background-color, #0f0d20);
+    box-shadow: 0 0 3rem rgba(0, 0, 0, 0.8);
+    text-align: center;
+    overflow: visible;
+}
+#bigpicture-quit .bigpicture-quit-title {
+    margin-bottom: 2rem;
+    font-size: 2rem;
+    color: var(--primary-foreground-color, #fff);
+}
+#bigpicture-quit .bigpicture-quit-actions {
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+    overflow: visible;
+}
+#bigpicture-quit button {
+    min-width: 10rem;
+    height: 3.5rem;
+    padding: 0 2rem;
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.12);
+    font-size: 1.4rem;
+    color: var(--primary-foreground-color, #fff);
+}
+
 /* On-screen keyboard: a panel along the bottom, above everything. */
 #bigpicture-keyboard {
     position: fixed;

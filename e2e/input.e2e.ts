@@ -58,7 +58,11 @@ test.describe('gamepad', () => {
         await remote.open('/', BIG_PICTURE);
         await expect(remote.view().getByTitle('movie top 1', { exact: true })).toBeFocused();
         await remote.pad(RB);
-        await expect(remote.focused()).toHaveAttribute('title', /^series imdbRating|^channel top/);
+        // Three rows down. Offline, a bar about the missing streaming server covers the
+        // bottom of the screen, and when it covers that row it's the next control there.
+        await expect.poll(() => remote.focused().evaluate((element) => (
+            element.getAttribute('title') ?? element.textContent ?? ''
+        ))).toMatch(/^series imdbRating|^channel top|^Install$/);
 
         await remote.pad(Y);
         await expect(remote.page).toHaveURL(/#\/search/);

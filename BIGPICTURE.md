@@ -34,7 +34,7 @@ The local UI is its own origin, so it has its own login and settings, separate f
 | Arrows | Move to the nearest control in that direction. Left and Right only move along a row, so a row's end is a dead end. Up and Down weigh distance against being out of line, so forms are walked in reading order and grids keep their column |
 | Left, with nothing in line | Enters the nav rail at the current tab, from any row |
 | Enter | Activates the control (upstream behaviour) |
-| Escape, Backspace, BrowserBack | Back: closes the open menu, popup or dialog first, otherwise goes back in history. Home is the floor. Backspace still deletes text in a text field |
+| Escape, Backspace, BrowserBack | Back: closes the open menu, popup or dialog first, otherwise goes back in history. On Board, where history ends, it asks to quit (see below). Backspace still deletes text in a text field |
 
 - **One key handler:** it runs in the capture phase, before any upstream handler, so a key Big Picture uses never also triggers an upstream shortcut. The bundled spatial-navigation polyfill is switched off (its `keyMode` set to `NONE`) while Big Picture is on. The player has its own rules (below).
 - **Where arrows stay:** inside an upstream `--spatial-navigation-contain` menu, else the topmost open popup or dialog (react-focus-lock marks them), else the route on screen.
@@ -62,6 +62,14 @@ The local UI is its own origin, so it has its own login and settings, separate f
   - **Dropdowns:** a dropdown that opens takes focus, on its chosen option, so Back closes it first.
   - **Text fields:** arriving in one puts the cursor at the end; empty email fields let Left and Right go.
 - **The polyfill's search isn't used:** when its hit test fails (on Settings switches, for example), it measures from the scroll container instead of the control, which skips controls or moves the wrong way. `spatial.ts` replaces it with about 40 lines.
+
+## Quitting
+
+Back (B on a gamepad) on Board asks **Quit Stremio?**, as TV apps do (`src/bigpicture/input/quit.ts`).
+- **Quit** (A or Enter, focused when it opens) closes Stremio through the shell's own `quit` command. The launcher then stops the UI server, as when the window is closed.
+- **Cancel**, or Back again, closes the question, with focus back where it was. Pressing Back twice never quits by accident.
+- **In a browser** there is nothing to quit, so Back on Board does nothing.
+- **How it fits in:** like the on-screen keyboard, it's a plain layer outside React, so the focus engine's arrows and Back work on it unchanged.
 
 ## Player
 
@@ -235,6 +243,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 6 | 2026-11-02 | Player keys, overlay and menus (`src/bigpicture/focus/player.ts`), polyfill off in Big Picture, `e2e/player.e2e.ts`. No upstream files changed |
 | 7 | 2026-11-03 | Launcher entry and autostart (`tv/install.sh`), second-start, leftover-server and busy-port handling, notifications and the CORS check (`tv/launch.sh`), `tv/tests/launcher.test.sh`. No upstream files changed |
 | 8 | 2026-11-03 | First test on the TV PC. Render modes and the soak test (`tv/launch.sh`, `src/bigpicture/soak.ts`), the fake account and signed-in screen tests (`e2e/support/account.ts`, `e2e/screens.e2e.ts`). No upstream files changed |
+| 9 | 2026-11-03 | Quitting from the remote: Back on Board asks to quit (`src/bigpicture/input/quit.ts`, the focus engine's Back, styles), tests in `e2e/focus.e2e.ts`. No upstream files changed |
 
 ## License
 

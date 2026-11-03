@@ -79,7 +79,8 @@ class FocusEngine {
     // A control focused only because the wait for content ran out; see check().
     private provisional: HTMLElement | null = null;
 
-    constructor(private readonly goBack: () => void, private readonly navigate: Navigate) {}
+    // onHomeBack: Back on Board, where history has nowhere left to go (asks to quit).
+    constructor(private readonly goBack: () => void, private readonly navigate: Navigate, private readonly onHomeBack?: () => void) {}
 
     // The key for remembering focus by place rather than by history entry.
     private get place() {
@@ -270,6 +271,8 @@ class FocusEngine {
         } else if (this.navigation.path !== '/') {
             // Home is the floor: Back never leaves Board through older history.
             this.goBack();
+        } else {
+            this.onHomeBack?.();
         }
     }
 

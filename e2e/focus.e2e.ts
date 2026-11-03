@@ -1,7 +1,7 @@
 // Stremio Big Picture, Phase 2: arrow navigation, initial focus, focus memory, Back.
 // SPDX-License-Identifier: GPL-2.0-only
 
-import { test, expect } from './support/tv';
+import { test, expect, type Remote } from './support/tv';
 
 const BIG_PICTURE = 'bigpicture=1';
 
@@ -223,7 +223,12 @@ test.describe('inside the shell', () => {
         await remote.arrived(/#\/detail\//);
         await remote.press('Escape');
         await expect(view.getByTitle('movie top 1', { exact: true })).toBeFocused();
+        // Back on Board asks to quit; Back again closes the question, still fullscreen.
         await remote.press('Escape');
+        await expect(remote.page.getByRole('alertdialog')).toBeVisible();
+        await remote.press('Escape');
+        await expect(remote.page.getByRole('alertdialog')).toHaveCount(0);
+        await expect(view.getByTitle('movie top 1', { exact: true })).toBeFocused();
 
         // Closing a popup sends it an Escape of its own, which upstream would also
         // take as "leave fullscreen".
@@ -239,6 +244,68 @@ test.describe('inside the shell', () => {
             .filter(({ args }) => args?.[0] === 'win-set-visibility')
             .map(({ args }) => args?.[1]);
         expect(fullscreen).toEqual([{ fullscreen: true }]);
+    });
+});
+
+test.describe('quitting from the remote', () => {
+    test.use({ shell: true, gamepad: true });
+
+    const quitRequests = async (remote: Remote) => (await remote.shellMessages())
+        .filter(({ args }) => args?.[0] === 'quit');
+
+    test('Back on Board asks to quit; Back again cancels, back on the same poster', async ({ remote }) => {
+        const view = remote.view();
+        await remote.open('/', BIG_PICTURE);
+        const poster = view.getByTitle('movie top 1', { exact: true });
+        await expect(poster).toBeFocused();
+        await remote.press('Escape');
+        const dialog = remote.page.getByRole('alertdialog', { name: 'Quit Stremio?' });
+        await expect(dialog).toBeVisible();
+        await expect(remote.focused()).toHaveText('Quit');
+        // Arrows stay inside the dialog.
+        await remote.press('ArrowRight');
+        await expect(remote.focused()).toHaveText('Cancel');
+        await remote.press('ArrowDown');
+        await expect(remote.focused()).toHaveText('Cancel');
+        await remote.press('Escape');
+        await expect(dialog).toHaveCount(0);
+        await expect(poster).toBeFocused();
+        expect(await quitRequests(remote)).toEqual([]);
+    });
+
+    test('Cancel keeps the app open, and Quit asks the shell to quit', async ({ remote }) => {
+        await remote.open('/', BIG_PICTURE);
+        await expect(remote.view().getByTitle('movie top 1', { exact: true })).toBeFocused();
+        const dialog = remote.page.getByRole('alertdialog', { name: 'Quit Stremio?' });
+        await remote.press('Escape');
+        await remote.press('ArrowRight');
+        await remote.press('Enter');
+        await expect(dialog).toHaveCount(0);
+        expect(await quitRequests(remote)).toEqual([]);
+
+        await remote.press('Escape');
+        await expect(remote.focused()).toHaveText('Quit');
+        await remote.press('Enter');
+        await expect.poll(async () => (await quitRequests(remote)).length).toBe(1);
+    });
+
+    test('the gamepad does it too: B asks, A quits', async ({ remote }) => {
+        await remote.open('/', BIG_PICTURE);
+        await expect(remote.view().getByTitle('movie top 1', { exact: true })).toBeFocused();
+        await remote.pad(1);
+        await expect(remote.page.getByRole('alertdialog', { name: 'Quit Stremio?' })).toBeVisible();
+        await remote.pad(0);
+        await expect.poll(async () => (await quitRequests(remote)).length).toBe(1);
+    });
+
+    test('Back elsewhere still goes back, without asking', async ({ remote }) => {
+        await remote.open('/', BIG_PICTURE);
+        await expect(remote.view().getByTitle('movie top 1', { exact: true })).toBeFocused();
+        await remote.press('Enter');
+        await remote.arrived(/#\/detail\//);
+        await remote.press('Escape');
+        await remote.arrived(/#\/$/);
+        await expect(remote.page.getByRole('alertdialog')).toHaveCount(0);
     });
 });
 
