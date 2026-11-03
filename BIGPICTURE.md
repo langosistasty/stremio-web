@@ -135,6 +135,8 @@ Big Picture has its own look (`src/bigpicture/theme/`), approved on 2026-11-03. 
 - **Posters:** the focused poster grows a little, with the ring on its artwork, and only it shows its name.
 - **Rail:** quiet icons; the current screen's is amber, and the labels show when focus enters the rail. Search has a tab there, second after Board (`screens/RailSearch.tsx`, upstream's own tab button rendered into the rail).
 - **Board's hero** (`screens/BoardHero.tsx`): the focused title's backdrop fills the top half, fading into the room on the left and below, with its name in the display face, its year, runtime, genres and rating, and three lines of description. It follows focus once focus rests for 250 ms, with a 300 ms crossfade, from the previews the core already holds for Board. The top bar gives way to it on Board (Search is in the rail), the rows show posters only, since the hero names the focused one, and the focused row stays just under the hero.
+- **Details:** the stream's play button and "Install addons" take the accent, with dark icons and text on it. Elsewhere upstream's green stays for now, because it carries white text in many places and white on amber can't be read from a couch. The section labels (Genres, Cast, Directors) are in sentence case and the secondary grey instead of faded capitals.
+- **Board's hero before any focus:** it shows Board's first title, and while focus is in the rail it keeps the last one, so the top of the screen is never empty.
 - **No upstream change for the screens:** the hero and the rail tab are rendered through portals into the view on screen, found by class-name prefix (`screens/usePortalTarget.ts`). It's re-checked twice a second, because Board first renders a placeholder copy of its layout while loading.
 - **Motion:** short (160 ms) and only in answer to a key press. With reduced motion on, it's instant.
 - **Screenshots:** `E2E_SHOTS=1 e2e/run.sh --no-build --project=webkit screenshots` saves every screen at 1920×1080 to `e2e/shots/`, with real addons and artwork for the public screens (needs the network) and the fake account for Library and Calendar.
@@ -268,6 +270,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 8 | 2026-11-03 | First test on the TV PC. Render modes and the soak test (`tv/launch.sh`, `src/bigpicture/soak.ts`), the fake account and signed-in screen tests (`e2e/support/account.ts`, `e2e/screens.e2e.ts`). No upstream files changed |
 | 9 | 2026-11-03 | Quitting from the remote: Back on Board asks to quit (`src/bigpicture/input/quit.ts`, the focus engine's Back, styles), tests in `e2e/focus.e2e.ts`. No upstream files changed |
 | 10 | 2026-11-03 | The TV look: tokens, bundled fonts, focus, posters and rail on every screen, Board's hero and Search in the rail (`src/bigpicture/theme/`, `src/bigpicture/screens/`); the old ring moved out of `focus/styles.ts`. Focus engine: Right out of the rail returns to where you were, and clipped controls stay reachable. Screenshot tests (`e2e/screenshots.e2e.ts`) and the fake account's addon collection. No upstream files changed |
+| 11 | 2026-11-03 | The TV look on Details: accent play and install buttons, sentence-case section labels (`src/bigpicture/theme/`). Board's hero is never empty. No upstream files changed |
 
 ## License
 

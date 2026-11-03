@@ -145,6 +145,30 @@ html[data-bigpicture] [class*="vertical-nav-bar-container-"]:focus-within [class
     font-size: 0.85rem;
 }
 
+/* Details: the stream's play button and "Install addons" take the accent, with dark
+   icons and text on it (white on amber can't be read from a couch). Elsewhere upstream's
+   green stays: it carries white text in many places. */
+html[data-bigpicture] [class*="stream-container-"] [class*="icon-"] {
+    background-color: var(--bp-projector);
+    color: var(--bp-auditorium);
+}
+html[data-bigpicture] [class*="streams-list-container-"] [class*="install-button-container-"] {
+    background-color: var(--bp-projector);
+}
+html[data-bigpicture] [class*="streams-list-container-"] [class*="install-button-container-"] :is([class*="icon-"], [class*="label-"]) {
+    color: var(--bp-auditorium);
+}
+
+/* Details: section labels (Genres, Cast...) in sentence case and the usher grey, not
+   faded all-caps. */
+html[data-bigpicture] :is([class*="meta-links-container-"], [class*="description-container-"]) > [class*="label-container-"] {
+    text-transform: none;
+    opacity: 1;
+    color: var(--bp-usher);
+    font-size: 1.1rem;
+    font-weight: 600;
+}
+
 /* Calendar: today's number sits on the accent, so it's set in the background colour. */
 html[data-bigpicture] [class*="today-"] [class*="day-"] {
     color: var(--bp-auditorium);

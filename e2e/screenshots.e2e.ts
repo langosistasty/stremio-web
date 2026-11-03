@@ -44,8 +44,7 @@ test.describe('screenshots', () => {
 
         test('details', async ({ remote }) => {
             await remote.open('/', BIG_PICTURE);
-            await expect(remote.focused()).toHaveCount(1, { timeout: 15000 });
-            await remote.page.waitForTimeout(1500);
+            await expect(remote.page.locator('[class*="meta-item-link-"]:focus')).toHaveCount(1, { timeout: 30000 });
             await remote.press('Enter');
             await remote.page.waitForTimeout(4000);
             await shoot(remote, 'details-movie');

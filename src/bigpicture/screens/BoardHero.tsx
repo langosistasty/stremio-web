@@ -68,12 +68,20 @@ const BoardHero = ({ active }: { active: boolean }) => {
         if (!target) return;
         let timer = 0;
         let request = 0;
+        let shown = false;
         const show = () => {
-            const title = focusedTitle(document.activeElement);
+            // With focus elsewhere (the rail), the hero keeps the last title; before any,
+            // it shows Board's first, so the top of the screen is never empty.
+            const focused = focusedTitle(document.activeElement);
+            if (!focused && shown) return;
+            const title = focused ?? focusedTitle(target.querySelector(`${ROWS} a[href*="#/detail/"]`));
             if (!title) return;
             const current = ++request;
             findPreview(core.transport, title.id).then((found) => {
-                if (found && current === request) setPreview(found);
+                if (found && current === request) {
+                    shown = true;
+                    setPreview(found);
+                }
             });
         };
         const onFocusIn = (event: FocusEvent) => {
@@ -93,9 +101,15 @@ const BoardHero = ({ active }: { active: boolean }) => {
         };
         target.addEventListener('focusin', onFocusIn);
         show();
+        // Posters arrive after the hero mounts; fill it once they do.
+        const first = window.setInterval(() => {
+            if (shown) window.clearInterval(first);
+            else show();
+        }, 500);
         return () => {
             target.removeEventListener('focusin', onFocusIn);
             window.clearTimeout(timer);
+            window.clearInterval(first);
         };
     }, [target, core]);
 

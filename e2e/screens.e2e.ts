@@ -164,6 +164,9 @@ test.describe('signed in', () => {
             await expect(remote.page).not.toHaveURL(url);
             url = remote.page.url();
             await expect(prev).toBeFocused();
+            // The new month's grid re-renders after the URL changes; keys pressed during
+            // that land on cells that are about to be replaced.
+            await remote.page.waitForTimeout(400);
             await remote.press('ArrowDown');
             await expect(remote.focused()).toHaveAttribute('class', /cell/);
             await remote.press('ArrowRight');
