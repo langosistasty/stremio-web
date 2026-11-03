@@ -17,6 +17,9 @@ type Options = {
     gamepad: boolean,
     // Log in to a fake Stremio account with a library (see account.ts) on the first open.
     account: boolean,
+    // Real Stremio addons and artwork instead of fixtures (for screenshots only: needs
+    // the network, and the content changes from day to day).
+    online: boolean,
 };
 
 type Remote = {
@@ -92,15 +95,18 @@ const test = base.extend<Options & { remote: Remote }>({
     catalogDelay: [0, { option: true }],
     gamepad: [false, { option: true }],
     account: [false, { option: true }],
-    remote: async ({ page, context, baseURL, shell, catalogDelay, gamepad, account }, use) => {
+    online: [false, { option: true }],
+    remote: async ({ page, context, baseURL, shell, catalogDelay, gamepad, account, online }, use) => {
         // Offline: only the app's own files load. The Stremio API and the streaming
         // server are unreachable; the default addons answer from fixtures.
-        await context.route('**/*', (route) => (
-            route.request().url().startsWith(baseURL!) ? route.continue() : route.abort('blockedbyclient')
-        ));
-        // Registered later, so it takes precedence: the default addons answer from fixtures.
-        await serveCatalogs(context, catalogDelay);
-        if (account) await serveAccount(context);
+        if (!online) {
+            await context.route('**/*', (route) => (
+                route.request().url().startsWith(baseURL!) ? route.continue() : route.abort('blockedbyclient')
+            ));
+            // Registered later, so it takes precedence: the default addons answer from fixtures.
+            await serveCatalogs(context, catalogDelay);
+        }
+        const fakeAccount = account ? await serveAccount(context) : null;
         let signedIn = !account;
         await page.addInitScript(pageSetup, { shell, gamepad });
 
@@ -114,6 +120,8 @@ const test = base.extend<Options & { remote: Remote }>({
                     // Through the same core action Intro's log-in form dispatches.
                     await page.goto('');
                     await page.waitForFunction(() => (window as any).core);
+                    // The account's addon collection is the app's own defaults.
+                    fakeAccount?.setAddons(await page.evaluate(async () => (await (window as any).core.getState('ctx')).profile.addons));
                     await page.evaluate(() => (window as any).core.dispatch({
                         action: 'Ctx',
                         args: { action: 'Authenticate', args: { type: 'Login', email: 'tv@e2e.invalid', password: 'e2e' } },

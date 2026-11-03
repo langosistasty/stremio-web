@@ -33,6 +33,9 @@ test.describe('gamepad', () => {
         await remote.open('/', BIG_PICTURE);
         await expect(remote.view().getByTitle('movie top 1', { exact: true })).toBeFocused();
         await remote.pad(LEFT);
+        // Second in the rail is Search (Board's top bar gives way to its hero).
+        await remote.pad(DOWN);
+        await expect(remote.focused()).toHaveAttribute('href', '#/search');
         await remote.pad(DOWN);
         await expect(remote.focused()).toHaveAttribute('href', '#/discover');
         await remote.pad(A);

@@ -52,7 +52,7 @@ if [ -n "$ENGINE" ]; then
     # Files the tests write stay owned by you.
     USER_ARGS=(--user "$(id -u):$(id -g)")
     [ "$ENGINE" = podman ] && USER_ARGS=(--userns=keep-id)
-    exec "$ENGINE" run --rm --network host --ipc host "${USER_ARGS[@]}" -e HOME=/tmp -e CI \
+    exec "$ENGINE" run --rm --network host --ipc host "${USER_ARGS[@]}" -e HOME=/tmp -e CI -e E2E_WORKERS -e E2E_SHOTS \
         -v "$REPO:$REPO" -w "$E2E" "$IMAGE" node_modules/.bin/playwright test "$@"
 fi
 

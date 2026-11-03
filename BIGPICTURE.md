@@ -33,6 +33,7 @@ The local UI is its own origin, so it has its own login and settings, separate f
 |---|---|
 | Arrows | Move to the nearest control in that direction. Left and Right only move along a row, so a row's end is a dead end. Up and Down weigh distance against being out of line, so forms are walked in reading order and grids keep their column |
 | Left, with nothing in line | Enters the nav rail at the current tab, from any row |
+| Right, in the nav rail | Returns to the control you left the screen from |
 | Enter | Activates the control (upstream behaviour) |
 | Escape, Backspace, BrowserBack | Back: closes the open menu, popup or dialog first, otherwise goes back in history. On Board, where history ends, it asks to quit (see below). Backspace still deletes text in a text field |
 
@@ -43,7 +44,7 @@ The local UI is its own origin, so it has its own login and settings, separate f
 - **Initial focus:** a view starts on its main content, not the nav bars: Board, Discover and Library on the first poster, Search on its text field. Catalog views wait up to 1.5 s for posters. If they're late, focus takes a stopgap and moves to the first poster when it arrives, unless a key was pressed in between.
 - **Focus memory:** Back returns to the control that had focus, per history entry. A view that stayed mounted gets the same element back; a view that was rebuilt is matched by link, title and text.
 - **Closing layers:** Back sends the layer an Escape of its own, then an outside click, then presses its close or cancel button, stopping as soon as the layer is gone. In Big Picture, Escape never leaves fullscreen.
-- **Focus ring:** a white outline with a violet glow on the focused control, injected as a global stylesheet scoped to `html[data-bigpicture]`. Phase 3 makes it part of the TV layout.
+- **Focus ring:** an amber outline with a soft glow on the focused control; on posters it's drawn on the artwork. It's part of the TV look (see below).
 - **Per screen (Phase 4):**
 
   | Screen | Starts on | Notes |
@@ -57,7 +58,7 @@ The local UI is its own origin, so it has its own login and settings, separate f
   - **Focus groups:** Left and Right look first inside the smallest group around the control (a row's posters, a bar's buttons).
   - **What counts as "in that direction":** a control must start past the current one's middle, so overlapping layouts like a bar over the last row still work.
   - **The rail:** it's only entered with Left; Up and Down stay out of it.
-  - **Covered controls:** a control fully on screen but covered by something else is skipped.
+  - **Covered controls:** a control fully on screen, and fully inside its scrolling list, but covered by something else is skipped. One clipped by its list (a row scrolled up behind Board's hero) stays reachable, since scrolling brings it back.
   - **Lazy lists:** with nothing further down, Up and Down scroll the list and look again, for lists that render as they scroll (Search, Discover).
   - **Dropdowns:** a dropdown that opens takes focus, on its chosen option, so Back closes it first.
   - **Text fields:** arriving in one puts the cursor at the end; empty email fields let Left and Right go.
@@ -115,6 +116,28 @@ Back (B on a gamepad) on Board asks **Quit Stremio?**, as TV apps do (`src/bigpi
 - **Done:** closes the keyboard; in the search field it also searches.
 - **Back:** closes it, with focus back on the field.
 - **How it fits in:** it's a plain DOM layer outside React, marked `data-bigpicture-layer`, so the focus engine's arrows and Back work on it unchanged. Values go in through the field's native setter and an `input` event, the way React-controlled fields accept them.
+
+## TV look: "house lights down"
+
+Big Picture has its own look (`src/bigpicture/theme/`), approved on 2026-11-03. The screen behaves like a cinema: artwork is the light source, the interface is the dimmed room around it, and one warm accent (projector light) marks where you are. It only applies with Big Picture on; normal Stremio keeps upstream's look.
+
+| Token | Hex | Use |
+|---|---|---|
+| Auditorium | `#0D1220` | Background: deep blue ink, which blends into film backdrops |
+| Balcony | `#161D30` | Raised surfaces: dialogs, the keyboard |
+| Aisle | `#2A3350` | Inactive and selected controls, placeholders |
+| Screen | `#F1EEE6` | Main text |
+| Usher | `#A3ABC2` | Secondary text |
+| Projector | `#FFB547` | The one accent: focus, the current screen, progress |
+
+- **Type:** Big Shoulders Display, a condensed face from Chicago signage, for titles; Atkinson Hyperlegible Next, designed for legibility, for everything else. Both are bundled under the SIL Open Font License (`src/bigpicture/theme/fonts/`), with Latin and Latin Extended (ő, ű) subsets, so a TV needs no network for them.
+- **How:** upstream draws its colours from CSS variables, so the theme sets those variables to the tokens, scoped to `html[data-bigpicture]`. Upstream's CSS modules have hashed class names, so the few direct rules match on class-name prefixes.
+- **Posters:** the focused poster grows a little, with the ring on its artwork, and only it shows its name.
+- **Rail:** quiet icons; the current screen's is amber, and the labels show when focus enters the rail. Search has a tab there, second after Board (`screens/RailSearch.tsx`, upstream's own tab button rendered into the rail).
+- **Board's hero** (`screens/BoardHero.tsx`): the focused title's backdrop fills the top half, fading into the room on the left and below, with its name in the display face, its year, runtime, genres and rating, and three lines of description. It follows focus once focus rests for 250 ms, with a 300 ms crossfade, from the previews the core already holds for Board. The top bar gives way to it on Board (Search is in the rail), the rows show posters only, since the hero names the focused one, and the focused row stays just under the hero.
+- **No upstream change for the screens:** the hero and the rail tab are rendered through portals into the view on screen, found by class-name prefix (`screens/usePortalTarget.ts`). It's re-checked twice a second, because Board first renders a placeholder copy of its layout while loading.
+- **Motion:** short (160 ms) and only in answer to a key press. With reduced motion on, it's instant.
+- **Screenshots:** `E2E_SHOTS=1 e2e/run.sh --no-build --project=webkit screenshots` saves every screen at 1920×1080 to `e2e/shots/`, with real addons and artwork for the public screens (needs the network) and the fake account for Library and Calendar.
 
 ## TV layout
 
@@ -244,6 +267,7 @@ GPLv2 section 2(a) asks modified files to carry a notice of the change, so this 
 | 7 | 2026-11-03 | Launcher entry and autostart (`tv/install.sh`), second-start, leftover-server and busy-port handling, notifications and the CORS check (`tv/launch.sh`), `tv/tests/launcher.test.sh`. No upstream files changed |
 | 8 | 2026-11-03 | First test on the TV PC. Render modes and the soak test (`tv/launch.sh`, `src/bigpicture/soak.ts`), the fake account and signed-in screen tests (`e2e/support/account.ts`, `e2e/screens.e2e.ts`). No upstream files changed |
 | 9 | 2026-11-03 | Quitting from the remote: Back on Board asks to quit (`src/bigpicture/input/quit.ts`, the focus engine's Back, styles), tests in `e2e/focus.e2e.ts`. No upstream files changed |
+| 10 | 2026-11-03 | The TV look: tokens, bundled fonts, focus, posters and rail on every screen, Board's hero and Search in the rail (`src/bigpicture/theme/`, `src/bigpicture/screens/`); the old ring moved out of `focus/styles.ts`. Focus engine: Right out of the rail returns to where you were, and clipped controls stay reachable. Screenshot tests (`e2e/screenshots.e2e.ts`) and the fake account's addon collection. No upstream files changed |
 
 ## License
 

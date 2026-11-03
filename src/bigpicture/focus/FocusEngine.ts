@@ -78,6 +78,8 @@ class FocusEngine {
     private watchdog = 0;
     // A control focused only because the wait for content ran out; see check().
     private provisional: HTMLElement | null = null;
+    // The last control focused outside the nav rail, for Right out of the rail.
+    private lastContent: HTMLElement | null = null;
 
     // onHomeBack: Back on Board, where history has nowhere left to go (asks to quit).
     constructor(private readonly goBack: () => void, private readonly navigate: Navigate, private readonly onHomeBack?: () => void) {}
@@ -207,6 +209,7 @@ class FocusEngine {
         if (!view || !(target instanceof HTMLElement) || !view.contains(target) || inLayer(target)) return;
         this.pending = null;
         this.memory.remember(view, this.navigation.entry, this.place, target, Array.from(view.querySelectorAll(ALL_CONTROLS)));
+        if (!inRail(target)) this.lastContent = target;
     };
 
     private move(direction: Direction, retry = true) {
@@ -233,6 +236,11 @@ class FocusEngine {
         let next = (group && nextInDirection(active, candidates.filter((candidate) => group.contains(candidate)), direction, allowMisaligned)) ??
             nextInDirection(active, candidates, direction, allowMisaligned);
         // Left enters the nav rail at the current tab, from any row, as TV apps do.
+        // Right out of the rail goes back to where you left the screen, as TV apps do,
+        // rather than to whatever lines up with the tab (a row scrolled up under Board's hero).
+        if (direction === 'right' && inRail(active) && this.lastContent?.isConnected && scope.contains(this.lastContent) && isFocusable(this.lastContent)) {
+            next = this.lastContent;
+        }
         if (direction === 'left' && !inRail(active) && (next === null || inRail(next))) {
             next = railEntry(scope) ?? next;
         }

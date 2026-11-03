@@ -202,6 +202,7 @@ export type { Direction };
 export {
     currentLayer,
     focusElement,
+    fullyVisible,
     focusGroup,
     focusables,
     inLayer,

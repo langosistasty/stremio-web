@@ -1,22 +1,26 @@
 // Stremio Big Picture: applies the mode's global effects.
 // SPDX-License-Identifier: GPL-2.0-only
 
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { useLocation, useNavigate, useNavigationType } from 'react-router';
 import { useFullscreen, usePlatform } from 'stremio/common';
 import { useGoBack } from 'stremio/router';
 import { useBigPictureLayout } from './store';
 import { FocusEngine, installStyles, startPromoting } from './focus';
+import installTheme from './theme';
 import startDiagnostics from './diagnostics';
 import startSoak from './soak';
 import startGamepads from './input/gamepad';
 import { startKeyboardTracking } from './input/keyboard';
 import { closeQuitDialog, openQuitDialog } from './input/quit';
+import BoardHero from './screens/BoardHero';
+import RailSearch from './screens/RailSearch';
 
 startDiagnostics();
 startSoak();
 
-// Rendered once inside FullscreenProvider and the router; draws nothing.
+// Rendered once inside FullscreenProvider and the router. It draws only into the views on
+// screen, through portals: Board's hero and the rail's Search tab.
 const BigPicture = () => {
     const { enabled, overscan } = useBigPictureLayout();
     const { shell } = usePlatform();
@@ -67,6 +71,7 @@ const BigPicture = () => {
     useEffect(() => {
         if (!enabled) return;
         installStyles();
+        installTheme();
         // Quitting needs the shell; in a browser, Back on Board does nothing.
         const onHomeBack = () => {
             if (shellRef.current.active) openQuitDialog(() => shellRef.current.send('quit'));
@@ -88,7 +93,12 @@ const BigPicture = () => {
         };
     }, [enabled]);
 
-    return null;
+    return (
+        <>
+            <BoardHero active={enabled} />
+            <RailSearch active={enabled} />
+        </>
+    );
 };
 
 export default BigPicture;

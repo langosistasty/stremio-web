@@ -31,8 +31,18 @@ test.describe('in Big Picture', () => {
         await remote.press('ArrowRight');
         await expect(remote.focused()).toHaveAttribute('href', /#\/detail\//);
 
+        // Board has no top bar (its hero takes the top), so Up from the first row stays in
+        // the rows (at most on the row's own "See All").
         await remote.open('/', BIG_PICTURE);
         await expect(view.getByTitle('movie top 1', { exact: true })).toBeFocused();
+        await remote.press('ArrowUp');
+        await expect.poll(() => remote.focused().evaluate((element) => (
+            element.closest('[class*="meta-row-container-"]') !== null && element.closest('nav') === null
+        ))).toBe(true);
+
+        // Elsewhere, Up reaches the top bar.
+        await remote.open('/settings', BIG_PICTURE);
+        await expect(remote.focused()).toContainText(/general/i);
         await remote.press('ArrowUp');
         await expect(remote.focused()).toHaveCount(1);
         expect(await remote.focused().evaluate((element) => element.closest('nav') !== null)).toBe(true);
@@ -113,9 +123,9 @@ test.describe('in Big Picture', () => {
     });
 
     test('Back closes a popup and returns focus to its button', async ({ remote }) => {
-        const view = remote.view();
-        await remote.open('/', BIG_PICTURE);
-        await expect(view.getByTitle('movie top 1', { exact: true })).toBeFocused();
+        // The top bar's account menu; Board has no top bar, so from Settings.
+        await remote.open('/settings', BIG_PICTURE);
+        await expect(remote.focused()).toContainText(/general/i);
         await remote.press('ArrowUp');
         await remote.press('ArrowRight', 5);
         const menuButton = remote.focused();
@@ -127,7 +137,7 @@ test.describe('in Big Picture', () => {
         await expect(popup).toBeVisible();
         await remote.press('Escape');
         await expect(popup).toHaveCount(0);
-        await expect(remote.page).toHaveURL(/#\/$/);
+        await expect(remote.page).toHaveURL(/#\/settings/);
         expect(await remote.focused().evaluate((element) => element.className)).toBe(label);
     });
 
@@ -174,6 +184,15 @@ test.describe('in Big Picture', () => {
     test('the focused control has a large ring', async ({ remote }) => {
         await remote.open('/', BIG_PICTURE);
         await expect(remote.view().getByTitle('movie top 1', { exact: true })).toBeFocused();
+        // On a poster, the ring is drawn on the artwork: a solid ring plus a glow.
+        // The first shadow is the ring: its spread is the last length before the comma.
+        await expect.poll(() => remote.focused().evaluate((element) => {
+            const shadow = getComputedStyle(element.querySelector('[class*="poster-container-"]')!).boxShadow;
+            const [ring] = shadow.split(/,(?![^(]*\))/);
+            return ring.includes('255, 181, 71') ? parseFloat(ring.trim().split(' ').pop()!) : 0;
+        })).toBeGreaterThanOrEqual(4);
+        // Other controls carry an outline ring.
+        await remote.press('ArrowLeft');
         const outline = await remote.focused().evaluate((element) => parseFloat(getComputedStyle(element).outlineWidth));
         expect(outline).toBeGreaterThanOrEqual(4);
     });
@@ -231,7 +250,11 @@ test.describe('inside the shell', () => {
         await expect(view.getByTitle('movie top 1', { exact: true })).toBeFocused();
 
         // Closing a popup sends it an Escape of its own, which upstream would also
-        // take as "leave fullscreen".
+        // take as "leave fullscreen". The top bar's menu, from Settings (Board has no top bar).
+        await remote.press('ArrowLeft');
+        await remote.focusBy('ArrowDown', remote.view().locator('nav a[href="#/settings"]'));
+        await remote.press('Enter');
+        await remote.arrived(/#\/settings/);
         await remote.press('ArrowUp');
         await remote.press('ArrowRight', 5);
         await remote.press('Enter');

@@ -4,7 +4,7 @@
 // which skips controls or moves the wrong way. This is a small, predictable replacement.
 // SPDX-License-Identifier: GPL-2.0-only
 
-import type { Direction } from './dom';
+import { fullyVisible, type Direction } from './dom';
 
 // Up and Down weigh distance against being out of line, so a two-column form (labels
 // left, controls right) is walked in reading order and a grid keeps its column.
@@ -52,11 +52,13 @@ const score = (origin: Box, box: Box, direction: Direction): Score | null => {
 };
 
 // Whether something else covers the element everywhere, like a poster under a
-// notification bar. Only judged for a control wholly on screen: one partly scrolled
-// away can be scrolled into view, so it stays reachable.
+// notification bar. Only judged for a control wholly on screen and wholly inside its
+// scrolling lists: one partly scrolled away can be scrolled into view, so it stays
+// reachable (Board's rows scroll up behind its hero).
 const hidden = (element: HTMLElement) => {
     const { left, top, width, height, right, bottom } = element.getBoundingClientRect();
     if (left < 0 || top < 0 || right > window.innerWidth || bottom > window.innerHeight) return false;
+    if (!fullyVisible(element)) return false;
     const points = [[0.5, 0.5], [0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]]
         .map(([x, y]) => [left + width * x, top + height * y]);
     return points.every(([x, y]) => {

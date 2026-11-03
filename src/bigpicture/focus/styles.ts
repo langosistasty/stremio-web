@@ -5,13 +5,8 @@
 const ID = 'bigpicture-styles';
 
 const CSS = `
-/* Focus ring, drawn outside the element: an inset ring is painted over by poster images.
-   A white line with a violet glow stays visible at 3 m on light and dark artwork. */
-html[data-bigpicture] :focus {
-    outline: 0.3rem solid #ffffff !important;
-    outline-offset: 0.2rem !important;
-    box-shadow: 0 0 1.5rem 0.6rem rgba(123, 91, 245, 0.8) !important;
-}
+/* The focus ring itself is part of the theme (../theme). It's drawn outside the element:
+   an inset ring is painted over by poster images. */
 
 /* Text fields sit in tight form layouts that clip an outer ring: draw theirs inside. */
 html[data-bigpicture] :is(input, textarea):focus {

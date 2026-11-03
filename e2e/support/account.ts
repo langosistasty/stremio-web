@@ -80,6 +80,8 @@ const calendarVideos = (extra: string) => {
 const serveAccount = async (context: BrowserContext, library: Partial<Library> = {}) => {
     const { series, movies, watching } = { ...DEFAULT_LIBRARY, ...library };
     const now = Date.now();
+    // Answers addonCollectionGet; tv.ts fills it with the app's default addons before logging in.
+    let addons: unknown[] = [];
     const items = [
         ...Array.from({ length: series }, (_, index) => libraryItem('series', index, index < watching / 2, now)),
         ...Array.from({ length: movies }, (_, index) => libraryItem('movie', index, index < watching / 2, now)),
@@ -92,12 +94,14 @@ const serveAccount = async (context: BrowserContext, library: Partial<Library> =
             datastoreMeta: items.map((item) => [item._id, Date.parse(item._mtime)]),
             datastoreGet: items,
             datastorePut: { success: true },
+            addonCollectionGet: { addons, lastModified: '2026-01-01T00:00:00.000Z' },
             getModal: null,
             getNotification: null,
         };
         if (method in results) return json(route, { result: results[method] });
         return json(route, { error: { message: `${method} is not faked`, code: 1 } });
     });
+    return { setAddons: (list: unknown[]) => { addons = list; } };
 };
 
 export { calendarVideos, libraryMeta, serveAccount };
